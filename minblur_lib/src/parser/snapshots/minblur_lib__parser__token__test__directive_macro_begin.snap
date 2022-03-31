@@ -1,0 +1,26 @@
+---
+source: minblur_lib/src/parser/token.rs
+assertion_line: 334
+expression: out
+
+---
+[
+    Token {
+        line: 1,
+        column: 1,
+        data: DirectiveToken(
+            BeginMacro {
+                name: "abc",
+                args: [
+                    "arg1",
+                    "arg2",
+                ],
+            },
+        ),
+    },
+    Token {
+        line: 1,
+        column: 24,
+        data: Skip,
+    },
+]

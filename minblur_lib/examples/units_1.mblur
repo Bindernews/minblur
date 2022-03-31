@@ -1,0 +1,47 @@
+.macro main(posX, posY, bindStartTimer)
+  set posX_ 1
+  set posY_ 2
+start:
+  read isOn cell1 0
+  jump $label:start equal isOn 0
+  radar player any any distance @this 1 p
+  sensor isDead p @dead
+  jump $label:start equal isDead true
+  set bindStart ${bindStartTimer}
+  op sub bindStart bindStart 1
+  jump 8 greaterThan bindStart 0
+  ubind @flare
+  read isOn cell1 0
+  jump $label:start equal isOn 0
+  sensor fl @unit @flag
+  jump 16 equal fl 0
+  jump 10 always x false
+  op rand myFlag 100000 offsetDist
+  op add myFlag myFlag 100000
+  ucontrol flag myFlag 0 0 0 0
+  read isOn cell1 0
+  jump ${label("starts")} equal isOn 0
+  sensor isDead @unit isDead
+  jump 10 equal isDead true
+  sensor isDead p isDead
+  jump $label:start equal isDead true
+  read offsetDist cell1 1
+  op mul relX ${posX} offsetDist
+  sensor goX p @x
+  op add goX goX relX
+  op mul relY ${posY} offsetDist
+  sensor goY p @y
+  op add goY goY relY
+  ucontrol move goX goY 0 0 0
+  sensor shoot p @shooting
+  jump 37 equal shoot true
+  ucontrol target sX sY 0 0 0
+  jump 18 always shoot true
+  sensor sX p @shootX
+  sensor sY p @shootY
+  ucontrol target sX sY 1 0 0
+  jump 18 always x false
+.endmacro
+
+#main!(1, 1, 10)
+main!(2, 1, 20)

@@ -1,0 +1,13 @@
+
+# This is a label
+start:
+    # Set r1 to 5
+    set r1 5 # This is a second comment, at the end of the line
+    m! x = r1 * 50
+    math! {
+        x = r1 * 50
+
+    }
+    m! pixel = p0
+    call! fn_draw_pixel
+

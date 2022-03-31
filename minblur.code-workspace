@@ -1,0 +1,61 @@
+{
+	"folders": [
+		{
+			"path": "."
+		}
+	],
+	"settings": {},
+	"launch": {
+		"version": "0.2.0",
+		"configurations": [
+			{
+				"name": "(Windows) cargo test",
+				"type": "cppvsdbg",
+				"request": "launch",
+				"program": "${input:cargo_minblur_lib_test_exe}",
+				"args": [
+					"compiler::test::test_example_memory"
+				],
+				"stopAtEntry": false,
+				"cwd": "${workspaceFolder}",
+				"environment": [],
+				"console": "integratedTerminal",
+				"preLaunchTask": "cargo build tests"
+			}
+		],
+		"inputs": [
+			{
+				"id": "cargo_minblur_lib_test_exe",
+				"type": "command",
+				"command": "shellCommand.execute",
+				"args": {
+					"command": "cargo test -p minblur_lib -q --no-run --message-format=json | jq -r \"select(.profile.test == true) | .filenames[0]\"",
+					"cwd": "${workspaceFolder}",
+					"useSingleResult": true
+				}
+			}
+		]
+	},
+	"tasks": {
+		"version": "2.0.0",
+		"tasks": [
+			{
+				"label": "cargo build tests",
+				"type": "shell",
+				"command": "cargo",
+				"args": [
+					"test",
+					"--no-run"
+				],
+				"problemMatcher": [
+					"$rustc"
+				]
+			}
+		],
+	},
+	"extensions": {
+		"recommendations": [
+			"augustocdias.tasks-shell-input"
+		]
+	}
+}

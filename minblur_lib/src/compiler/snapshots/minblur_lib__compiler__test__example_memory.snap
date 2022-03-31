@@ -1,0 +1,32 @@
+---
+source: minblur_lib/src/compiler/mod.rs
+assertion_line: 293
+expression: "comp.compile_and_generate(\"memory.mblur\", code).unwrap()"
+
+---
+write r_ip cell1 0
+write r_a cell1 6
+write r_b cell1 12
+read _t1 cell1 1
+jump 3 equal _t1 0
+read instr cell1 2
+read _t1 cell1 7
+jump 6 equal _t1 0
+read a_val cell1 8
+read _t1 cell1 13
+jump 9 equal _t1 0
+read b_val cell1 14
+jump 13 always -1 -1
+op shr __t0 instr 5
+op and ia __t0 7
+op shr __t0 instr 2
+op and ib __t0 7
+op and ic instr 3
+jump 22 equal ic 0
+jump 23 equal ic 1
+jump 23 equal ic 2
+jump 23 always 1 1
+jump 23 always 1 1
+end
+end
+

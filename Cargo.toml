@@ -1,0 +1,8 @@
+
+[workspace]
+members = [
+    "bn-expression",
+    "minblur_lib",
+    "minblur_cli",
+    "minblur_wasm"
+]

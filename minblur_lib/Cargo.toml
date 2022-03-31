@@ -1,0 +1,25 @@
+[package]
+name = "minblur_lib"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+default = []
+serialize = ["serde", "serde/derive", "bn-expression/serialize"]
+json = ["serialize", "serde_json"]
+
+[dependencies]
+nom = { version = "7", features = ["alloc"] }
+nom_locate = { version = "4.0.0" }
+strum = { version = "0.23", features = ["derive"] }
+thiserror = "1.0"
+reffers = { version = "0.6.1" }
+kstring = "1.0"
+downcast-rs = "1.2"
+serde_json = { version = "1.0", optional = true }
+serde = { version = "1.0", optional = true }
+bn-expression = { path = "../bn-expression" }
+
+[dev-dependencies]
+insta = "1.12"

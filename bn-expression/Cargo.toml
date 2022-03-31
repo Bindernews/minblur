@@ -1,0 +1,14 @@
+[package]
+name = "bn-expression"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[features]
+serialize = ["serde", "serde/derive"]
+
+[dependencies]
+nom = { version = "7", features = ["alloc"] }
+nom_locate = { version = "4.0.0" }
+serde = { version = "1.0", optional = true }
+thiserror = "1.0"

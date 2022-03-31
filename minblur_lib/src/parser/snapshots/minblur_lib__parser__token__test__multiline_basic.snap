@@ -1,0 +1,157 @@
+---
+source: minblur_lib/src/parser/token.rs
+assertion_line: 342
+expression: out
+
+---
+[
+    Token {
+        line: 1,
+        column: 1,
+        data: Label(
+            Label {
+                name: "start",
+            },
+        ),
+    },
+    Token {
+        line: 1,
+        column: 7,
+        data: Skip,
+    },
+    Token {
+        line: 1,
+        column: 8,
+        data: EndOfStatement,
+    },
+    Token {
+        line: 2,
+        column: 1,
+        data: Skip,
+    },
+    Token {
+        line: 2,
+        column: 3,
+        data: Instruction(
+            Set(
+                InstructionSet {
+                    result: Value(
+                        Name(
+                            "r1",
+                        ),
+                    ),
+                    value: Value(
+                        Num(
+                            0.0,
+                        ),
+                    ),
+                },
+            ),
+        ),
+    },
+    Token {
+        line: 2,
+        column: 11,
+        data: EndOfStatement,
+    },
+    Token {
+        line: 3,
+        column: 1,
+        data: Skip,
+    },
+    Token {
+        line: 3,
+        column: 3,
+        data: Instruction(
+            Op(
+                InstructionOp {
+                    op: EnumName(
+                        CaString(
+                            "add",
+                        ),
+                    ),
+                    result: Value(
+                        Name(
+                            "r2",
+                        ),
+                    ),
+                    left: Value(
+                        Name(
+                            "r1",
+                        ),
+                    ),
+                    right: Value(
+                        Num(
+                            5.0,
+                        ),
+                    ),
+                },
+            ),
+        ),
+    },
+    Token {
+        line: 3,
+        column: 17,
+        data: EndOfStatement,
+    },
+    Token {
+        line: 4,
+        column: 1,
+        data: Skip,
+    },
+    Token {
+        line: 4,
+        column: 3,
+        data: MacroCall {
+            name: CaString(
+                "m",
+            ),
+            content: "x = r2 * 3",
+        },
+    },
+    Token {
+        line: 4,
+        column: 16,
+        data: EndOfStatement,
+    },
+    Token {
+        line: 5,
+        column: 1,
+        data: Skip,
+    },
+    Token {
+        line: 5,
+        column: 3,
+        data: Instruction(
+            Op(
+                InstructionOp {
+                    op: EnumName(
+                        CaString(
+                            "mul",
+                        ),
+                    ),
+                    result: Value(
+                        Name(
+                            "y",
+                        ),
+                    ),
+                    left: Value(
+                        Name(
+                            "r1",
+                        ),
+                    ),
+                    right: Value(
+                        Num(
+                            5.0,
+                        ),
+                    ),
+                },
+            ),
+        ),
+    },
+    Token {
+        line: 5,
+        column: 16,
+        data: EndOfStatement,
+    },
+]

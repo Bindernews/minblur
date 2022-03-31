@@ -1,0 +1,49 @@
+
+.define MEM_CELL cell1
+
+.macro mem_request(index, address)
+  write $address $MEM_CELL $index
+.endmacro
+
+.macro mem_wait(index, outvar)  
+  #read _t1 $MEM_CELL ${index+1}
+  .define index_1 ${index + 1}
+  m! _t1 = read($MEM_CELL, $index_1)
+  jump ${counter-1} equal _t1 0
+  read $outvar $MEM_CELL ${index+2}
+.endmacro
+
+
+main_loop:
+  mem_request!(0, r_ip)
+  mem_request!(6, r_a)
+  mem_request!(12, r_b)
+  mem_wait!(0, instr)
+  mem_wait!(6, a_val)
+  mem_wait!(12, b_val)
+  jump $label:decode_instr always -1 -1
+
+decode_instr:
+  # References:
+  # - https://www.masswerk.at/6502/6502_instruction_set.html#layout
+  
+  m! {
+    ia = (instr >> 5) & 7
+    ib = (instr >> 2) & 7
+    ic = (instr     ) & 3
+    jump(instr_c0, ic == 0)
+    jump(instr_c1, ic == 1)
+    jump(instr_c2, ic == 2)
+    jump(instr_bad)
+  }
+  
+  
+instr_c0:
+  # TODO
+  m! jump(instr_bad)
+
+instr_c1:
+  # Parse ib to determine addressing modes
+instr_c2:
+instr_bad:
+  end ; end # Comment after statements

@@ -1,0 +1,68 @@
+---
+source: minblur_lib/src/compiler/mod.rs
+assertion_line: 116
+expression: "comp.compile_and_generate(\"test\", &code).unwrap()"
+
+---
+read result cell1 0
+write a cell1 0
+draw clear 0 0 0 0 0 0
+draw color 255 20 20 255 0 0
+draw stroke 1 0 0 255 0 0
+draw line 10 10 20 20 0 0
+draw rect 10 10 20 20 0 0
+draw lineRect 10 10 20 20 0 0
+draw poly 10 10 20 20 0 0
+draw linePoly 10 10 20 20 0 0
+draw triangle 10 10 20 20 0 0
+draw image 10 10 @copper 32 0 0
+print "frog"
+print a
+print 6
+drawflush display1
+printflush message1
+getlink result 0
+control enabled block1 0 0 0 0
+control shoot block1 x y 1 0
+control shootp block1 u 1 0 0
+control configure block1 c 1 0 0
+control color block1 1 1 1 0
+radar enemy any any distance turret1 1 result
+sensor result block1 @copper
+set result 0
+op add a 1 1
+op sub b 2 2
+op mul c 3 3
+op div d 4 4
+op idiv a 1 1
+op mod b 2 2
+op pow c 3 3
+op land d 4 4
+op equal a 1 1
+op notEqual b 2 2
+op lessThan c 3 3
+op lessThanEq d 4 4
+op greaterThan a 1 1
+op greaterThanEq b 2 2
+op strictEqual c 3 3
+op or d 4 4
+op shl a 1 1
+op shr b 2 2
+op xor c 3 3
+op flip d 4 4
+op max a 1 1
+op min b 2 2
+op angle c 3 3
+op len d 4 4
+jump -1 notEqual x false
+ubind @poly
+ucontrol idle 0 0 0 0 0
+ucontrol stop 0 0 0 0 0
+ucontrol move 0 0 0 0 0
+ucontrol approach 0 0 0 0 0
+ucontrol boost 0 0 0 0 0
+ucontrol pathfind 0 0 0 0 0
+uradar enemy any any distance 0 1 result
+ulocate building core true @copper outx outy found building
+end
+

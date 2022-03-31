@@ -1,0 +1,19 @@
+# Usage: docker compose run --service-ports --rm rust
+version: '3'
+services:
+  rust:
+    build:
+      context: .
+      labels:
+        - "com.vortexel.minblur.rust-coverage"
+    ports:
+      - "8000:8000"
+    command: /bin/bash
+    stdin_open: true
+    tty: true
+    volumes:
+      - ../minblur_lib:/src
+      - cargo_registry:/usr/local/cargo/registry
+volumes:
+  cargo_registry:
+    driver: local
