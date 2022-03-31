@@ -284,42 +284,44 @@ impl<Op: ExpressionOp> Expression<Op> {
         accum: A,
         mut visitor: V,
     ) -> Result<A, E> {
+        self.visit_impl(top_down, accum, &mut visitor)
+    }
+
+    fn visit_impl<A, E, V: Visitor<A, E, Op>>(
+        &self,
+        top_down: bool,
+        mut ac: A,
+        visitor: &mut V,
+    ) -> Result<A, E> {
         match self {
-            Self::Value(_) => visitor.visit(self, accum),
+            Self::Value(_) => visitor.visit(self, ac),
             Self::Binary(_, left, right) => {
-                let ac = accum;
-                let ac = if top_down {
-                    visitor.visit(self, ac)?
-                } else {
-                    ac
+                if top_down {
+                    ac = visitor.visit(self, ac)?
                 };
-                let ac = visitor.visit(left, ac)?;
-                let ac = visitor.visit(right, ac)?;
-                let ac = if !top_down {
-                    visitor.visit(self, ac)?
-                } else {
-                    ac
-                };
+                ac = left.visit_impl(top_down, ac, visitor)?;
+                ac = right.visit_impl(top_down, ac, visitor)?;
+                if !top_down {
+                    ac = visitor.visit(self, ac)?
+                }
                 Ok(ac)
             }
             Self::Unary(_, left) => {
-                let mut ac = accum;
                 if top_down {
                     ac = visitor.visit(self, ac)?;
-                    ac = visitor.visit(left, ac)?;
+                    ac = left.visit_impl(top_down, ac, visitor)?;
                 } else {
-                    ac = visitor.visit(left, ac)?;
+                    ac = left.visit_impl(top_down, ac, visitor)?;
                     ac = visitor.visit(self, ac)?;
                 }
                 Ok(ac)
             }
             Self::Call(_, args) => {
-                let mut ac = accum;
                 if top_down {
                     ac = visitor.visit(self, ac)?;
                 }
                 for expr in args {
-                    ac = visitor.visit(expr, ac)?;
+                    ac = expr.visit_impl(top_down, ac, visitor)?;
                 }
                 if !top_down {
                     ac = visitor.visit(self, ac)?;

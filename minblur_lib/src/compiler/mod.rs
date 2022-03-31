@@ -316,6 +316,23 @@ mod test {
     }
 
     #[test]
+    fn web_demo() {
+        let code = r#"
+        # Minblur live demo!
+          set i 1
+        loop:
+          op add i i 1
+          m! jump(loop, (i % 1000) > 0)
+          print i
+          printflush message1
+          m! jump(loop)"#;
+        assert_eq!(
+            compile_code(code),
+            "set i 1\nop add i i 1\nop mod __t0 i 1000\njump 1 greaterThan __t0 0\nprint i\nprintflush message1\njump 1 always 1 1\n"
+        );
+    }
+
+    #[test]
     fn test_example_memory() {
         let mut comp = new_compiler();
         let code = include_str!("../../examples/memory.mblur");
