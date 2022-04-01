@@ -65,6 +65,7 @@ impl InstValue {
 
     pub fn into_value(self) -> Option<AValue> {
         match self {
+            Self::EnumName(v) => Some(AValue::name(v.as_str())),
             Self::Value(v) => Some(v),
             _ => None,
         }
@@ -1157,7 +1158,7 @@ pub enum InstructionKind {
     UnitRadar,
     UnitLocate,
 }
-crate::build_enum_match_alt!{
+crate::build_enum_match! {
     instruction_kind_match;
     InstructionKind;
     name => {
@@ -1200,7 +1201,28 @@ crate::build_enum_match_alt!{
         UnitRadar: InstructionUnitRadar,
         UnitLocate: InstructionUnitLocate,
     }
+    (arg_count, has_result) => {
+        Read: (3, true),
+        Write: (3, false),
+        Draw: (7, false),
+        Print: (1, false),
+        DrawFlush: (1, false),
+        PrintFlush: (1, false),
+        GetLink: (2, true),
+        Control: (6, false),
+        Radar: (7, true),
+        Sensor: (3, true),
+        Set: (2, true),
+        Op: (4, true),
+        End: (0, false),
+        Jump: (4, false),
+        UnitBind: (1, false),
+        UnitControl: (6, false),
+        UnitRadar: (7, true),
+        UnitLocate: (8, false),
+    }
 }
+
 impl InstructionKind {
     pub fn create(&self) -> Instruction {
         let mut args = Vec::new();
@@ -1212,32 +1234,19 @@ impl InstructionKind {
 
     pub fn create_with_args(&self, args: Vec<InstValue>) -> Result<Instruction, Vec<InstValue>> {
         macro_rules! callback {
-            ($_k:ident; $ty:path) => { <$ty>::try_from(args).map(Into::into) };
+            ($_k:ident; $ty:path) => {
+                <$ty>::try_from(args).map(Into::into)
+            };
         }
         instruction_kind_match!(instruction; match self into with callback)
     }
 
     pub fn arg_count(&self) -> usize {
-        match self {
-            Self::Read => 3,
-            Self::Write => 3,
-            Self::Draw => 7,
-            Self::Print => 1,
-            Self::DrawFlush => 1,
-            Self::PrintFlush => 1,
-            Self::GetLink => 2,
-            Self::Control => 6,
-            Self::Radar => 7,
-            Self::Sensor => 3,
-            Self::Set => 2,
-            Self::Op => 4,
-            Self::End => 0,
-            Self::Jump => 4,
-            Self::UnitBind => 1,
-            Self::UnitControl => 6,
-            Self::UnitRadar => 7,
-            Self::UnitLocate => 8,
-        }
+        instruction_kind_match!(arg_count; match self into)
+    }
+
+    pub fn has_result(&self) -> bool {
+        instruction_kind_match!(has_result; match self into)
     }
 
     pub fn name(&self) -> &'static str {
@@ -1263,10 +1272,7 @@ macro_rules! ik_cb_from {
         )*
     };
 }
-instruction_kind_match!{instruction; pairs with ik_cb_from}
-
-
-
+instruction_kind_match! {instruction; pairs with ik_cb_from}
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, strum::EnumString, strum::IntoStaticStr)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize))]
@@ -1351,16 +1357,10 @@ pub enum OpSymbol {
     Atan,
 }
 impl_instruction_enum!(OpSymbol);
-impl TryFrom<BasicOp> for OpSymbol {
-    type Error = ();
-    fn try_from(value: BasicOp) -> Result<Self, Self::Error> {
-        crate::try_enum_convert!(
-            BasicOp, OpSymbol, value, ();
-            { Add, Sub, Mul, Div, IDiv, Mod, BAnd, BOr, BXor, Equal, NotEqual, LessThan,
-                LessThanEq, GreaterThan, GreaterThanEq, LAnd, Shl, Shr, }
-            { Not => Flip, }
-        )
-    }
+crate::enum_try_from! {
+    impl TryFrom[BasicOp] for OpSymbol;
+    { Add, Sub, Mul, Div, IDiv, Mod, BAnd, BOr, BXor, Equal, NotEqual, LessThan,
+        LessThanEq, GreaterThan, GreaterThanEq, LAnd, Shl, Shr, Not => Flip, }
 }
 impl fmt::Display for OpSymbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -1394,16 +1394,12 @@ pub enum JumpSymbol {
     Always,
 }
 impl_instruction_enum!(JumpSymbol);
-impl TryFrom<OpSymbol> for JumpSymbol {
-    type Error = ();
-    fn try_from(value: OpSymbol) -> Result<Self, Self::Error> {
-        crate::try_enum_convert!(
-            OpSymbol, JumpSymbol, value, ();
-            { Equal, NotEqual, LessThan, LessThanEq, GreaterThan, GreaterThanEq, StrictEqual, }
-            {}
-        )
-    }
+crate::build_enum_match! {
+    jump_symbol_props; JumpSymbol;
+    op_symbol [enum] =>
+        { Equal, NotEqual, LessThan, LessThanEq, GreaterThan, GreaterThanEq, StrictEqual, }
 }
+jump_symbol_props!{op_symbol; impl TryFrom[OpSymbol] for Self}
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, strum::EnumString, strum::IntoStaticStr)]
 pub enum DrawMode {

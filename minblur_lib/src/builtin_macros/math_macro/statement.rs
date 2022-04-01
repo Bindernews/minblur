@@ -19,7 +19,7 @@ use super::MathError;
 use crate::{
     common::string_cache::StringCache,
     compiler::{consts::*, instruction::*, macros::prelude::*},
-    enum_from_variants, try_enum_convert,
+    enum_from_variants,
 };
 
 pub type Expression = bn_expression::Expression<MathOp>;
@@ -67,19 +67,7 @@ impl<'a> EvalContext<MathOp> for MathEval<'a> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum MathFunction {
-    Read,
-    Write,
-    Draw,
-    Print,
-    DrawFlush,
-    PrintFlush,
-    GetLink,
-    Control,
-    Radar,
-    Sensor,
-    Jump,
-
+pub enum OpFunction {
     Max,
     Min,
     Angle,
@@ -99,36 +87,23 @@ pub enum MathFunction {
     Acos,
     Atan,
 }
-impl MathFunction {
+impl OpFunction {
     pub fn eval_call(&self, name: &str, args: Vec<AValue>) -> Result<Expression, EvalError> {
         let args = ArgumentHelper::new(name, args);
-        let delay_err = || EvalError::delay_function_called(self.name());
         match self {
-            // Yes I could use _ but I want to ensure we match all variants
-            Self::Read
-            | Self::Write
-            | Self::Draw
-            | Self::Print
-            | Self::DrawFlush
-            | Self::PrintFlush
-            | Self::GetLink
-            | Self::Control
-            | Self::Radar
-            | Self::Sensor
-            | Self::Jump => Err(delay_err()),
             Self::Max => Self::math2(args, |a, b| a.max(b)),
             Self::Min => Self::math2(args, |a, b| a.min(b)),
             // Self::Angle => Self::math2(args, |x, y| y.atan2(x)),
-            Self::Angle => Err(delay_err()),
+            Self::Angle => Self::check_arg_count(args, 2),
             Self::Len => Self::math2(args, |x, y| (x * x + y * y).sqrt()),
-            Self::Noise => Err(delay_err()),
+            Self::Noise => Self::check_arg_count(args, 2),
             Self::Abs => Self::math1(args, |v| v.abs()),
             Self::Log => Self::math2(args, |a, b| a.log(b)),
             Self::Log10 => Self::math1(args, |v| v.log10()),
             Self::Floor => Self::math1(args, |v| v.floor()),
             Self::Ceil => Self::math1(args, |v| v.ceil()),
             Self::Sqrt => Self::math1(args, |v| v.sqrt()),
-            Self::Rand => Err(delay_err()),
+            Self::Rand => Self::check_arg_count(args, 1),
             Self::Sin => Self::math1(args, |v| v.sin()),
             Self::Cos => Self::math1(args, |v| v.cos()),
             Self::Tan => Self::math1(args, |v| v.tan()),
@@ -138,44 +113,9 @@ impl MathFunction {
         }
     }
 
-    pub fn get_function_type(&self) -> FunctionType {
-        match self {
-            Self::Read
-            | Self::Write
-            | Self::Draw
-            | Self::Print
-            | Self::DrawFlush
-            | Self::PrintFlush
-            | Self::GetLink
-            | Self::Control
-            | Self::Radar
-            | Self::Sensor
-            | Self::Jump => FunctionType::Delay,
-            Self::Angle | Self::Noise | Self::Rand => FunctionType::Delay,
-            _ => FunctionType::Eval,
-        }
-    }
-
-    /// Returns true if this function has a return value
-    pub fn has_return(&self) -> bool {
-        if OpSymbol::try_from(*self).is_ok() {
-            true
-        } else {
-            match self {
-                Self::Read => true,
-                Self::Write => false,
-                Self::Draw => false,
-                Self::Print => false,
-                Self::DrawFlush => false,
-                Self::PrintFlush => false,
-                Self::GetLink => true,
-                Self::Control => false,
-                Self::Radar => true,
-                Self::Sensor => true,
-                Self::Jump => false,
-                _ => false,
-            }
-        }
+    fn check_arg_count(args: ArgumentHelper, count: usize) -> Result<Expression, EvalError> {
+        args.assert_count(count, count)?;
+        Ok(args.return_input())
     }
 
     fn math1<F>(args: ArgumentHelper, f: F) -> Result<Expression, EvalError>
@@ -198,53 +138,91 @@ impl MathFunction {
             .unwrap_or_else(|_| args.return_input()))
     }
 
+    enum_to_from_str!(
+        OpFunction; pub fn name(); pub fn from_name();
+        {
+            Self::Max => "max",
+            Self::Min => "min",
+            Self::Angle => "angle",
+            Self::Len => "len",
+            Self::Noise => "noise",
+            Self::Abs => "abs",
+            Self::Log => "log",
+            Self::Log10 => "log10",
+            Self::Floor => "floor",
+            Self::Ceil => "ceil",
+            Self::Sqrt => "sqrt",
+            Self::Rand => "rand",
+            Self::Sin => "sin",
+            Self::Cos => "cos",
+            Self::Tan => "tan",
+            Self::Asin => "asin",
+            Self::Acos => "acos",
+            Self::Atan => "atan",
+        }
+    );
+}
+crate::enum_try_from! {
+    impl TryFrom[OpSymbol] for OpFunction [symmetric];
+    {   Max, Min, Angle, Len, Noise, Abs, Log, Log10, Floor, Ceil, Sqrt,
+        Rand, Sin, Cos, Tan, Asin, Acos, Atan, }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MathFunction {
+    Instruction(InstructionKind),
+    Op(OpFunction),
+}
+impl MathFunction {
+    pub fn eval_call(&self, name: &str, args: Vec<AValue>) -> Result<Expression, EvalError> {
+        match self {
+            Self::Instruction(i_kind) => {
+                let mut args = ArgumentHelper::new(name, args);
+                match i_kind {
+                    InstructionKind::Jump => {
+                        args.assert_count(1, 2)?;
+                        // Add default "true" argument
+                        if args.args.len() == 1 {
+                            args.args.push(AValue::Num(1f64));
+                        }
+                    }
+                    _ => {
+                        let count = i_kind.arg_count() - usize::from(i_kind.has_result());
+                        args.assert_count(count, count)?;
+                    }
+                }
+                Ok(args.return_input())
+            }
+            Self::Op(op) => op.eval_call(name, args),
+        }
+    }
+
+    pub fn get_function_type(&self) -> FunctionType {
+        FunctionType::Eval
+    }
+
+    #[allow(unused)]
     pub fn name(&self) -> &'static str {
-        ConstNames::try_from(*self).unwrap().name()
+        match self {
+            Self::Instruction(v) => v.name(),
+            Self::Op(v) => v.name(),
+        }
     }
     pub fn from_name(input: &str) -> Option<Self> {
-        ConstNames::from_name(input)?.try_into().ok()
-    }
-}
-impl TryFrom<ConstNames> for MathFunction {
-    type Error = ();
-    fn try_from(value: ConstNames) -> Result<Self, Self::Error> {
-        try_enum_convert!(ConstNames, MathFunction, value, ();
-            {   Read, Write, Draw, Print, DrawFlush, PrintFlush, GetLink, Control, Radar,
-                Sensor, Jump, Max, Min, Angle, Len, Noise, Abs, Log, Log10, Floor, Ceil, Sqrt,
-                Rand, Sin, Cos, Tan, Asin, Acos, Atan, }
-            {}
-        )
-    }
-}
-impl TryFrom<MathFunction> for ConstNames {
-    type Error = ();
-    fn try_from(value: MathFunction) -> Result<Self, Self::Error> {
-        try_enum_convert!(MathFunction, ConstNames, value, ();
-            {   Read, Write, Draw, Print, DrawFlush, PrintFlush, GetLink, Control, Radar,
-                Sensor, Jump, Max, Min, Angle, Len, Noise, Abs, Log, Log10, Floor, Ceil, Sqrt,
-                Rand, Sin, Cos, Tan, Asin, Acos, Atan, }
-            {}
-        )
-    }
-}
-impl TryFrom<MathFunction> for OpSymbol {
-    type Error = ();
-    fn try_from(value: MathFunction) -> Result<Self, Self::Error> {
-        try_enum_convert!(MathFunction, OpSymbol, value, ();
-            {   Max, Min, Angle, Len, Noise, Abs, Log, Log10, Floor, Ceil, Sqrt,
-                Rand, Sin, Cos, Tan, Asin, Acos, Atan, }
-            {}
-        )
-    }
-}
-impl TryFrom<MathFunction> for InstructionKind {
-    type Error = ();
-    fn try_from(value: MathFunction) -> Result<Self, Self::Error> {
-        try_enum_convert!(MathFunction, InstructionKind, value, ();
-            {   Read, Write, Draw, Print, DrawFlush, PrintFlush, GetLink, Control, Radar,
-                Sensor, Jump, }
-            {}
-        )
+        // diallow op and set instructions
+        match input {
+            "op" | "set" => {
+                return None;
+            }
+            _ => {}
+        }
+        if let Some(op) = OpFunction::from_name(input) {
+            Some(Self::Op(op))
+        } else if let Some(instr) = InstructionKind::from_name(input) {
+            Some(Self::Instruction(instr))
+        } else {
+            None
+        }
     }
 }
 
@@ -276,7 +254,7 @@ impl MathOp {
         BasicOp::from(*self).as_expr_str()
     }
     pub fn from_expr_str(input: &str) -> Option<Self> {
-        Some(BasicOp::from_expr_str(input)?.into())
+        Some(BasicOp::from_expr_str(input)?.try_into().unwrap())
     }
 }
 impl fmt::Display for MathOp {
@@ -310,46 +288,23 @@ impl ExpressionOp for MathOp {
         Err("failed to parse op")
     }
 }
-impl From<MathOp> for BasicOp {
-    fn from(value: MathOp) -> BasicOp {
-        try_enum_convert!(MathOp, BasicOp, value, ();
-            { Add, Sub, Mul, Div, IDiv, Mod, LAnd, BAnd, BOr, BXor, Not, Equal, NotEqual,
-                LessThan, LessThanEq, GreaterThan, GreaterThanEq, Shl, Shr, }
-            {}
-        )
-        .unwrap()
+crate::build_enum_match! {
+    math_op_props; MathOp;
+    basic_op [enum] => { 
+        Add, Sub, Mul, Div, IDiv, Mod, LAnd, BAnd, BOr, BXor, Not, Equal, NotEqual,
+        LessThan, LessThanEq, GreaterThan, GreaterThanEq, Shl, Shr,
     }
-}
-impl From<BasicOp> for MathOp {
-    fn from(value: BasicOp) -> MathOp {
-        try_enum_convert!(BasicOp, MathOp, value, ();
-            { Add, Sub, Mul, Div, IDiv, Mod, LAnd, BAnd, BOr, BXor, Not, Equal, NotEqual,
-                LessThan, LessThanEq, GreaterThan, GreaterThanEq, Shl, Shr, }
-            {}
-        )
-        .unwrap()
+    op_symbol [enum] => {
+        Add, Sub, Mul, Div, IDiv, Mod, LAnd, BAnd, BOr, BXor, Equal, NotEqual,
+        LessThan, LessThanEq, GreaterThan, GreaterThanEq, Shl, Shr, Not => Flip,
     }
+    jump_symbol [enum] =>
+        { Equal, NotEqual, LessThan, LessThanEq, GreaterThan, GreaterThanEq, }
 }
-
-impl TryFrom<MathOp> for OpSymbol {
-    type Error = ();
-    fn try_from(value: MathOp) -> Result<Self, Self::Error> {
-        try_enum_convert!(MathOp, OpSymbol, value, ();
-            { Add, Sub, Mul, Div, IDiv, Mod, LAnd, BAnd, BOr, BXor, Equal, NotEqual,
-                LessThan, LessThanEq, GreaterThan, GreaterThanEq, Shl, Shr, }
-            { Not => Flip, }
-        )
-    }
-}
-impl TryFrom<MathOp> for JumpSymbol {
-    type Error = ();
-    fn try_from(value: MathOp) -> Result<Self, Self::Error> {
-        try_enum_convert!(MathOp, JumpSymbol, value, ();
-            { Equal, NotEqual, LessThan, LessThanEq, GreaterThan, GreaterThanEq, }
-            {}
-        )
-    }
-}
+math_op_props!{basic_op; impl From[Self] for BasicOp}
+math_op_props!{basic_op; impl TryFrom[BasicOp] for Self}
+math_op_props!{op_symbol; impl TryFrom[Self] for OpSymbol}
+math_op_props!{jump_symbol; impl TryFrom[Self] for JumpSymbol}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum AssignmentOp {
@@ -373,26 +328,16 @@ impl AssignmentOp {
         }
     );
 }
-impl TryFrom<AssignmentOp> for MathOp {
-    type Error = ();
-    fn try_from(v: AssignmentOp) -> Result<MathOp, Self::Error> {
-        match v {
-            AssignmentOp::Set => Err(()),
-            AssignmentOp::Add => Ok(MathOp::Add),
-            AssignmentOp::Sub => Ok(MathOp::Sub),
-            AssignmentOp::Mul => Ok(MathOp::Mul),
-            AssignmentOp::Div => Ok(MathOp::Div),
-            AssignmentOp::IDiv => Ok(MathOp::IDiv),
-        }
-    }
+crate::enum_try_from! {
+    impl TryFrom[AssignmentOp] for MathOp;
+    { Add, Sub, Mul, Div, IDiv, }
 }
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum MathStatement {
     Assign(AssignStatement),
-    Jump(JumpStatement),
 }
-enum_from_variants!(MathStatement; Assign(AssignStatement), Jump(JumpStatement),);
+enum_from_variants!(MathStatement; Assign(AssignStatement),);
 
 impl MathStatement {
     pub fn generate(
@@ -402,7 +347,6 @@ impl MathStatement {
     ) -> Result<Vec<Statement>, MathError> {
         match self {
             Self::Assign(st) => st.generate(ctx, source_name),
-            Self::Jump(st) => st.generate(ctx, source_name),
         }
     }
 }
@@ -436,100 +380,6 @@ impl AssignStatement {
         let dest = AValue::name(&self.assignee);
         let gen = ExpressionTokenGen::new(&new_expr, dest, source, &ctx.string_cache());
         gen.generate(ctx)
-    }
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub struct JumpStatement {
-    pub pos: Position,
-    /// Jump condition
-    pub cond: Expression,
-    /// Destination
-    pub dest: AValue,
-}
-impl JumpStatement {
-    pub fn generate(
-        &self,
-        ctx: &mut CompilerEnv,
-        source_name: &Rc<String>,
-    ) -> Result<Vec<Statement>, MathError> {
-        // Need to know our source
-        let source = Source::new(source_name.clone(), self.pos.line, self.pos.column);
-        // Constant folding
-        let new_expr = self.cond.partial_eval(&mut MathEval::new(ctx, &source))?;
-        // Map destination into either quick-jump expression or straight number
-        let dest_value = if self.dest.is_name() {
-            let sc = ctx.string_cache();
-            InstValue::QuickConstExpr(sc.get(FUNC_LABEL_DEST), sc.get(&format!("{}", &self.dest)))
-        } else {
-            InstValue::Value(self.dest.clone())
-        };
-
-        // If we're a constant value, try to convert to bool and jump based on that
-        if let Some(v) = new_expr.as_value() {
-            let mut toks = Vec::new();
-            if v.is_string() {
-                // TODO return an error
-                todo!()
-            }
-            let args = if v.is_truthy() {
-                [
-                    dest_value,
-                    JumpSymbol::Always.into_value(&ctx.string_cache()),
-                    InstValue::new_num(-1),
-                    InstValue::new_num(-1),
-                ]
-            } else {
-                [
-                    dest_value,
-                    JumpSymbol::StrictEqual.into_value(&ctx.string_cache()),
-                    InstValue::new_num(0),
-                    InstValue::new_num(1),
-                ]
-            };
-            toks.push(Statement::new(
-                source,
-                StatementData::new_instr(InstructionJump::from(args)),
-            ));
-            Ok(toks)
-        } else {
-            // Not const
-
-            // Assert that the top-most expression can be turned into a jump instruction
-            if !new_expr
-                .get_op()
-                .map(|op| JumpSymbol::try_from(op).is_ok())
-                .unwrap_or(false)
-            {
-                return Err(MathError::InvalidJumpOp(new_expr.get_op().into()));
-            }
-            // Generate new tokens
-            let gen = ExpressionTokenGen::new(
-                &new_expr,
-                AValue::name("OUT"),
-                source.clone(),
-                &ctx.string_cache(),
-            );
-            let mut tokens = gen.generate(ctx)?;
-            // Replace last op with jump.
-            let last_op = tokens
-                .pop()
-                .and_then(|t| match t.data {
-                    StatementData::Instruction(Instruction::Op(i_op)) => Some(i_op),
-                    _ => None,
-                })
-                .expect("Expected InstructionOp but got something else");
-            tokens.push(Statement::new(
-                source,
-                StatementData::new_instr(InstructionJump {
-                    left: last_op.left,
-                    op: last_op.op,
-                    right: last_op.right,
-                    dest: dest_value,
-                }),
-            ));
-            Ok(tokens)
-        }
     }
 }
 
@@ -684,15 +534,12 @@ impl<'a> ExpressionTokenGen<'a> {
                 match expr {
                     Expression::Value(_) => {}
                     Expression::Binary(op, left, right) => {
-                        self.add_op_instr(expr, OpSymbol::try_from(*op).unwrap(), left, right)?;
+                        let op2 = OpSymbol::try_from(*op).unwrap();
+                        self.add_op_instr(expr, op2, left, right)?;
                     }
                     Expression::Unary(op, left) => {
-                        self.add_op_instr(
-                            expr,
-                            OpSymbol::try_from(*op).unwrap(),
-                            left,
-                            &zero_expr,
-                        )?;
+                        let op2 = OpSymbol::try_from(*op).unwrap();
+                        self.add_op_instr(expr, op2, left, &zero_expr)?;
                     }
                     Expression::Call(name, args) => self.visit_call(expr, name, args)?,
                 }
@@ -711,63 +558,73 @@ impl<'a> ExpressionTokenGen<'a> {
         // Helper
         let get_arg = |index| Self::get_arg(name, args, index);
         macro_rules! add_it {
-            (op1, $func:ident) => {{
-                let op = OpSymbol::try_from($func).unwrap();
+            (op1, $op_func:ident) => {{
+                let op = OpSymbol::try_from($op_func).unwrap();
                 self.add_op_instr(expr, op, get_arg(0)?, &AValue::from(0).into())
             }};
-            (op2, $func:ident) => {{
-                let op = OpSymbol::try_from($func).unwrap();
+            (op2, $op_func:ident) => {{
+                let op = OpSymbol::try_from($op_func).unwrap();
                 self.add_op_instr(expr, op, get_arg(0)?, get_arg(1)?)
             }};
-            (any, $func:ident, $result_index:expr) => {{
-                let name = InstructionKind::try_from($func).unwrap();
-                self.add_any_instr(name, expr, args, $result_index)
+            (kind, $kind:ident, $result_index:expr) => {{
+                self.add_any_instr($kind, expr, args, $result_index)
             }};
         }
         let func =
             MathFunction::from_name(name).ok_or_else(|| EvalError::unknown_function(name))?;
-        type MF = MathFunction;
         match func {
-            MF::Read => add_it!(any, func, Some(0)),
-            MF::Write => add_it!(any, func, None),
-            MF::Draw => add_it!(any, func, None),
-            MF::Print => add_it!(any, func, None),
-            MF::DrawFlush => add_it!(any, func, None),
-            MF::PrintFlush => add_it!(any, func, None),
-            MF::GetLink => add_it!(any, func, Some(0)),
-            MF::Control => add_it!(any, func, None),
-            MF::Radar => add_it!(any, func, Some(6)),
-            MF::Sensor => add_it!(any, func, Some(0)),
-            MF::Jump => self.generate_jump(name, args),
-            MF::Max => add_it!(op2, func),
-            MF::Min => add_it!(op2, func),
-            MF::Angle => add_it!(op2, func),
-            MF::Len => add_it!(op2, func),
-            MF::Noise => add_it!(op2, func),
-            MF::Abs => add_it!(op1, func),
-            MF::Log => add_it!(op2, func),
-            MF::Log10 => add_it!(op1, func),
-            MF::Floor => add_it!(op1, func),
-            MF::Ceil => add_it!(op1, func),
-            MF::Sqrt => add_it!(op1, func),
-            MF::Rand => add_it!(op1, func),
-            MF::Sin => add_it!(op1, func),
-            MF::Cos => add_it!(op1, func),
-            MF::Tan => add_it!(op1, func),
-            MF::Asin => add_it!(op1, func),
-            MF::Acos => add_it!(op1, func),
-            MF::Atan => add_it!(op1, func),
+            MathFunction::Instruction(kind) => {
+                type IK = InstructionKind;
+                match kind {
+                    IK::Read => add_it!(kind, kind, Some(0)),
+                    IK::Write => add_it!(kind, kind, None),
+                    IK::Draw => add_it!(kind, kind, None),
+                    IK::Print => add_it!(kind, kind, None),
+                    IK::DrawFlush => add_it!(kind, kind, None),
+                    IK::PrintFlush => add_it!(kind, kind, None),
+                    IK::GetLink => add_it!(kind, kind, Some(0)),
+                    IK::Control => add_it!(kind, kind, None),
+                    IK::Radar => add_it!(kind, kind, Some(6)),
+                    IK::Sensor => add_it!(kind, kind, Some(0)),
+                    IK::Set => add_it!(kind, kind, Some(0)),
+                    IK::Op => add_it!(kind, kind, Some(0)),
+                    IK::End => add_it!(kind, kind, None),
+                    IK::Jump => self.generate_jump(name, args),
+                    IK::UnitBind => add_it!(kind, kind, None),
+                    IK::UnitControl => add_it!(kind, kind, None),
+                    IK::UnitRadar => add_it!(kind, kind, Some(6)),
+                    IK::UnitLocate => add_it!(kind, kind, None),
+                }
+            }
+            MathFunction::Op(op) => {
+                type MF = OpFunction;
+                match op {
+                    MF::Max => add_it!(op2, op),
+                    MF::Min => add_it!(op2, op),
+                    MF::Angle => add_it!(op2, op),
+                    MF::Len => add_it!(op2, op),
+                    MF::Noise => add_it!(op2, op),
+                    MF::Abs => add_it!(op1, op),
+                    MF::Log => add_it!(op2, op),
+                    MF::Log10 => add_it!(op1, op),
+                    MF::Floor => add_it!(op1, op),
+                    MF::Ceil => add_it!(op1, op),
+                    MF::Sqrt => add_it!(op1, op),
+                    MF::Rand => add_it!(op1, op),
+                    MF::Sin => add_it!(op1, op),
+                    MF::Cos => add_it!(op1, op),
+                    MF::Tan => add_it!(op1, op),
+                    MF::Asin => add_it!(op1, op),
+                    MF::Acos => add_it!(op1, op),
+                    MF::Atan => add_it!(op1, op),
+                }
+            }
         }
     }
 
-    #[allow(clippy::try_err)]
     fn generate_jump(&mut self, name: &str, args: &[Expression]) -> Result<(), MathError> {
-        let true_cond = AValue::from(1).into();
-        let (dest, cond) = match args.len() {
-            1 => (Self::get_arg(name, args, 0)?, &true_cond),
-            2 => (Self::get_arg(name, args, 0)?, Self::get_arg(name, args, 1)?),
-            _ => Err(EvalError::call_error(name, "incorrect number of arguments"))?,
-        };
+        let dest = Self::get_arg(name, args, 0)?;
+        let cond = Self::get_arg(name, args, 1)?;
         // Get destination value
         let dest_value = dest
             .as_value()
@@ -788,16 +645,14 @@ impl<'a> ExpressionTokenGen<'a> {
             } else {
                 (JumpSymbol::StrictEqual, InstValue::new_num(0))
             };
-            let instr: Instruction = InstructionJump {
+            let instr = InstructionJump {
                 dest: dest_value,
                 op: symbol.into_value(&self.string_cache),
                 left,
                 right: InstValue::new_num(1),
-            }
-            .into();
+            };
             self.new_tokens
                 .push(Statement::new(self.source.clone(), instr));
-            Ok(())
         } else {
             // Not const
 
@@ -819,17 +674,16 @@ impl<'a> ExpressionTokenGen<'a> {
                 })
                 .expect("Expected InstructionOp but got something else");
             // Replace last op with jump.
-            let instr: Instruction = InstructionJump {
+            let instr = InstructionJump {
                 dest: dest_value,
                 op: last_op.op,
                 left: last_op.left,
                 right: last_op.right,
-            }
-            .into();
+            };
             self.new_tokens
                 .push(Statement::new(self.source.clone(), instr));
-            Ok(())
         }
+        Ok(())
     }
 
     fn get_arg<'b>(

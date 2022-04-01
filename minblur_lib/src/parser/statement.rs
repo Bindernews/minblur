@@ -218,7 +218,6 @@ crate::enum_from_variants!(
     StatementData;
     Label(Label),
     Directive(Directive),
-    Instruction(Instruction),
     MacroCall(MacroCall),
 );
 impl_accessors! {
@@ -238,6 +237,11 @@ impl_accessors! {
         }
     }
     mut fn directive_mut();
+}
+impl<T: Into<Instruction>> From<T> for StatementData {
+    fn from(v: T) -> Self {
+        Self::Instruction(v.into())
+    }
 }
 
 mod first_pass {
