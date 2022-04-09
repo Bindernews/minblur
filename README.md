@@ -75,8 +75,8 @@ the same code but with different constants.
   jump $label:fire_end equal bldg $controller
   control shoot bldg bldgAimX bldgAimY shoot 0
   fire_end:
-  m! jump (i < @links) fire_loop
-  m! jump start
+  m! jump(fire_loop, i < @links)
+  m! jump(start)
 .endmacro
 # Here lancer1 is the controller
 shoot_control!(lancer1)

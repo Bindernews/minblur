@@ -316,6 +316,36 @@ mod test {
     }
 
     #[test]
+    fn readme_macro_example() {
+        let code = r#"
+        .macro shoot_control(controller)
+        start:
+        sensor shoot $controller @shooting
+        sensor aimX $controller @shootX
+        sensor aimY $controller @shootY
+        set i 0
+        fire_loop:
+        getlink bldg i
+        m! i += 1
+        # Don't try to control the controller
+        jump $label:fire_end equal bldg $controller
+        control shoot bldg bldgAimX bldgAimY shoot 0
+        fire_end:
+        m! jump(fire_loop, i < @links)
+        m! jump(start)
+        .endmacro
+        # Here lancer1 is the controller
+        shoot_control!(lancer1)
+        # Here salvo2 is the controller
+        shoot_control!(salvo2)
+        "#;
+        assert_eq!(
+            compile_code(code),
+            "sensor shoot lancer1 @shooting\nsensor aimX lancer1 @shootX\nsensor aimY lancer1 @shootY\nset i 0\ngetlink bldg i\nop add i i 1\njump 8 equal bldg lancer1\ncontrol shoot bldg bldgAimX bldgAimY shoot 0\njump 4 lessThan i @links\njump 0 always 1 1\nsensor shoot salvo2 @shooting\nsensor aimX salvo2 @shootX\nsensor aimY salvo2 @shootY\nset i 0\ngetlink bldg i\nop add i i 1\njump 18 equal bldg salvo2\ncontrol shoot bldg bldgAimX bldgAimY shoot 0\njump 14 lessThan i @links\njump 10 always 1 1\n"
+        );
+    }
+
+    #[test]
     fn web_demo() {
         let code = r#"
         # Minblur live demo!
