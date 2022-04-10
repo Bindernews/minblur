@@ -169,8 +169,8 @@ name itself (see the example below). The easiest way around this is the `eval!` 
 which will do text-replacement and then parse that text.
 
 ```
-# This will NOT work
 .define INSTR set
+# This will NOT work
 $INSTR a 5
 # This WILL work
 eval!($INSTR a 5)
