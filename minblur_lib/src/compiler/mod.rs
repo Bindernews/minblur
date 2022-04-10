@@ -131,6 +131,23 @@ mod test {
         );
     }
 
+    #[test]
+    fn math_labels() {
+        let code = r#"m! {
+        ore = sorter1
+        i = 0
+        loop:
+        obj = getlink(i)
+        i += 1
+        type = sensor(obj, @type)
+        jump(loop.end, type != @unloader)
+        control(configure, obj, ore, 0, 0, 0)
+        loop.end:
+        jump(loop, i < @links)
+        }"#;
+        assert_eq!(compile_code(code), "set ore sorter1\nset i 0\ngetlink obj i\nop add i i 1\nsensor type obj @type\njump 7 notEqual type @unloader\ncontrol configure obj ore 0 0 0\njump 2 lessThan i @links\n");
+    }
+
     /// Test for a basic label syntax error
     #[test]
     fn test_syntax_err_1() {
@@ -161,10 +178,7 @@ mod test {
           to_max!(5)
           to_max!(10)
         "#;
-        assert_eq!(
-            compile_code(code),
-            "set r1 0\nop add r1 r1 1\njump 1 lessThan r1 5\nop add r1 r1 1\njump 3 lessThan r1 10\n"
-        );
+        assert_eq!(compile_code(code), "set r1 0\nop add r1 r1 1\njump 1 lessThan r1 5\nop add r1 r1 1\njump 3 lessThan r1 10\n");
     }
 
     #[test]
@@ -287,6 +301,16 @@ mod test {
             compile_fmt_error(code),
             "PassError(ArcSource { name: \"test\", line: 0, column: 0, parent: None }, BlockStackUnexpectedType(\"if\", \"root\"))"
         );
+    }
+
+    #[test]
+    fn test_dotted_names() {
+        let code = r#"
+        set @a.b 5
+        @b.d:
+        end
+        "#;
+        assert_eq!(compile_code(code), "set @a.b 5\nend\n");
     }
 
     #[test]

@@ -1,8 +1,8 @@
 mod avalue;
-mod macros;
 pub mod basic;
 pub mod error;
 pub mod expression;
+mod macros;
 pub mod parse;
 pub mod util;
 
@@ -20,8 +20,9 @@ pub mod test {
         AValue,
     };
     use crate::{
+        build_expression,
         error::{EvalError, ParseError},
-        parse::{match_name_basic, ExpressionParser, IExpressionParser}, build_expression,
+        parse::{match_name_basic, ExpressionParser, IExpressionParser},
     };
 
     macro_rules! new_expr {

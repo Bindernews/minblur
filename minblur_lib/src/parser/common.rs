@@ -104,7 +104,7 @@ pub fn parse_string(input: Span) -> MyResult<Span> {
 }
 
 pub fn identifier_char(input: Span) -> MyResult<Span> {
-    alt((alphanumeric1, tag("_")))(input)
+    alt((alphanumeric1, tag("_"), tag(".")))(input)
 }
 
 /// Basic identifier without special characters.

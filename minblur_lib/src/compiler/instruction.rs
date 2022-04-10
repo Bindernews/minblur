@@ -1399,7 +1399,7 @@ crate::build_enum_match! {
     op_symbol [enum] =>
         { Equal, NotEqual, LessThan, LessThanEq, GreaterThan, GreaterThanEq, StrictEqual, }
 }
-jump_symbol_props!{op_symbol; impl TryFrom[OpSymbol] for Self}
+jump_symbol_props! {op_symbol; impl TryFrom[OpSymbol] for Self}
 
 #[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, strum::EnumString, strum::IntoStaticStr)]
 pub enum DrawMode {

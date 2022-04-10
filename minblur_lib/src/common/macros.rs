@@ -110,7 +110,6 @@ macro_rules! impl_accessors {
     (@ $self:ident;) => {};
 }
 
-
 #[macro_export]
 macro_rules! __parse_enum_map {
     ($callback:path; $cb_args:tt $tail:tt) => {

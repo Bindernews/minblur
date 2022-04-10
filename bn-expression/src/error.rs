@@ -9,9 +9,9 @@ use crate::parse::{ErrType, Position, Span};
 pub type BoxError = Box<dyn StdError + 'static>;
 
 /// Error type for expression evaluation
-/// 
+///
 /// If in doubt use either [`EvalError::CallError`] or, if passing through
-/// a nested error type, [`EvalError::Other`]. 
+/// a nested error type, [`EvalError::Other`].
 #[derive(Error, Debug)]
 #[cfg_attr(feature = "serialize", derive(serde::Serialize), serde(tag = "kind"))]
 pub enum EvalError {

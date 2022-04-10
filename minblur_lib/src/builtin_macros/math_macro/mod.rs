@@ -63,7 +63,7 @@ mod parse {
     use bn_expression::parse::{assert_eof, ExpressionParser, IExpressionParser, Position};
     use nom::combinator::{cut, value};
     use nom::multi::{many0, many1};
-    use nom::sequence::pair;
+    use nom::sequence::{pair, terminated};
     use nom::Finish;
     use nom::{
         branch::alt,
@@ -115,6 +115,15 @@ mod parse {
             Ok((input, expr))
         }
 
+        fn parse_label_statement(input: Span) -> MyResult<LabelStatement> {
+            terminated(parse_identifier_basic_const, pair(space0, tag(":")))
+                .map(|name| LabelStatement {
+                    pos: Position::from_span(&input),
+                    name: name.to_string(),
+                })
+                .parse(input)
+        }
+
         fn parse_assign_statement(input: Span) -> MyResult<AssignStatement> {
             pair(
                 alt((
@@ -135,7 +144,10 @@ mod parse {
         }
 
         fn parse_statement(input: Span) -> MyResult<MathStatement> {
-            map(Self::parse_assign_statement, Into::into)(input)
+            alt((
+                map(Self::parse_label_statement, Into::into),
+                map(Self::parse_assign_statement, Into::into),
+            ))(input)
         }
 
         fn statement_end_space(input: Span) -> MyResult<()> {

@@ -1,4 +1,3 @@
-
 /// Helps implementing `as_str()` and `from_str()` methods
 /// for enums. See [`basic::BasicOp`] for an example.
 #[macro_export]

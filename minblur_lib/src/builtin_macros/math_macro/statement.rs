@@ -20,6 +20,7 @@ use crate::{
     common::string_cache::StringCache,
     compiler::{consts::*, instruction::*, macros::prelude::*},
     enum_from_variants,
+    parser::Label,
 };
 
 pub type Expression = bn_expression::Expression<MathOp>;
@@ -290,7 +291,7 @@ impl ExpressionOp for MathOp {
 }
 crate::build_enum_match! {
     math_op_props; MathOp;
-    basic_op [enum] => { 
+    basic_op [enum] => {
         Add, Sub, Mul, Div, IDiv, Mod, LAnd, BAnd, BOr, BXor, Not, Equal, NotEqual,
         LessThan, LessThanEq, GreaterThan, GreaterThanEq, Shl, Shr,
     }
@@ -301,10 +302,10 @@ crate::build_enum_match! {
     jump_symbol [enum] =>
         { Equal, NotEqual, LessThan, LessThanEq, GreaterThan, GreaterThanEq, }
 }
-math_op_props!{basic_op; impl From[Self] for BasicOp}
-math_op_props!{basic_op; impl TryFrom[BasicOp] for Self}
-math_op_props!{op_symbol; impl TryFrom[Self] for OpSymbol}
-math_op_props!{jump_symbol; impl TryFrom[Self] for JumpSymbol}
+math_op_props! {basic_op; impl From[Self] for BasicOp}
+math_op_props! {basic_op; impl TryFrom[BasicOp] for Self}
+math_op_props! {op_symbol; impl TryFrom[Self] for OpSymbol}
+math_op_props! {jump_symbol; impl TryFrom[Self] for JumpSymbol}
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum AssignmentOp {
@@ -336,8 +337,12 @@ crate::enum_try_from! {
 #[derive(Clone, Debug, PartialEq)]
 pub enum MathStatement {
     Assign(AssignStatement),
+    Label(LabelStatement),
 }
-enum_from_variants!(MathStatement; Assign(AssignStatement),);
+enum_from_variants!(MathStatement;
+    Assign(AssignStatement),
+    Label(LabelStatement),
+);
 
 impl MathStatement {
     pub fn generate(
@@ -347,6 +352,7 @@ impl MathStatement {
     ) -> Result<Vec<Statement>, MathError> {
         match self {
             Self::Assign(st) => st.generate(ctx, source_name),
+            Self::Label(st) => st.generate(ctx, source_name),
         }
     }
 }
@@ -380,6 +386,24 @@ impl AssignStatement {
         let dest = AValue::name(&self.assignee);
         let gen = ExpressionTokenGen::new(&new_expr, dest, source, &ctx.string_cache());
         gen.generate(ctx)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct LabelStatement {
+    pub pos: Position,
+    pub name: String,
+}
+impl LabelStatement {
+    pub fn generate(
+        &self,
+        _ctx: &mut CompilerEnv,
+        source_name: &Rc<String>,
+    ) -> Result<Vec<Statement>, MathError> {
+        let lbl = Label::new(self.name.clone());
+        let source = Source::new(source_name.clone(), self.pos.line, self.pos.column);
+        let stmt = Statement::new(source, lbl);
+        Ok(vec![stmt])
     }
 }
 
