@@ -205,8 +205,12 @@ impl<'a> TokenParser {
 
     /// Parse a directive. Directives begin with "." and
     pub fn parse_directive_token(&self, input: Span<'a>) -> MyResult<'a, TokenData> {
-        let map_define = tuple((
-            value((), pair(tag_no_case(DIRECTIVE_DEFINE), sp1)),
+        fn match_dir_name<'b>(name: &'static str) -> impl Parser<Span<'b>, (), ErrType<'b>> {
+            value((), pair(tag_no_case(name), sp0))
+        }
+
+        let parse_define = tuple((
+            match_dir_name(DIRECTIVE_DEFINE),
             identifier_basic,
             value((), sp1),
             |inp| parse_instruction_arg_string(&self.string_cache, inp),
@@ -216,44 +220,46 @@ impl<'a> TokenParser {
             value: opt.3,
         });
 
-        let parse_include = preceded(preceded(tag_no_case(DIRECTIVE_INCLUDE), sp1), parse_string);
-        let map_include = map(parse_include, |s| DirectiveToken::Include {
-            path: span_string(&s),
-        });
-
-        let parse_macro = preceded(
-            preceded(tag_no_case(DIRECTIVE_MACRO), sp1),
-            tuple((identifier_basic, sp0, argument_list)),
+        let parse_include = map(
+            preceded(match_dir_name(DIRECTIVE_INCLUDE), parse_string),
+            |s| DirectiveToken::Include {
+                path: span_string(&s),
+            },
         );
-        let map_macro = map(parse_macro, |tup: (Span, Span, Vec<Span>)| {
-            DirectiveToken::BeginMacro {
-                name: span_string(&tup.0),
-                args: tup.2.iter().map(span_string).collect(),
-            }
-        });
 
-        let map_end_macro = value(DirectiveToken::EndMacro, tag_no_case(DIRECTIVE_ENDMACRO));
+        let parse_macro = map(
+            tuple((
+                match_dir_name(DIRECTIVE_MACRO),
+                identifier_basic,
+                sp0,
+                argument_list,
+            )),
+            |tup: ((), Span, Span, Vec<Span>)| DirectiveToken::BeginMacro {
+                name: span_string(&tup.1),
+                args: tup.3.iter().map(span_string).collect(),
+            },
+        );
+
+        let parse_end_macro = value(DirectiveToken::EndMacro, tag_no_case(DIRECTIVE_ENDMACRO));
 
         let parse_option = preceded(
-            preceded(tag_no_case(DIRECTIVE_OPTION), sp1),
-            separated_pair(identifier_basic, sp1, parse_string),
-        );
-        let map_option = map(parse_option, |opt| DirectiveToken::Option {
+            match_dir_name(DIRECTIVE_OPTION),
+            separated_pair(identifier_basic, sp1, alt((parse_string, identifier_basic))),
+        )
+        .map(|opt| DirectiveToken::Option {
             key: span_string(&opt.0),
             value: span_string(&opt.1),
         });
 
-        let parse_if = preceded(
-            preceded(tag_no_case(DIRECTIVE_IF), sp1),
-            condition_eol_or_comment,
-        );
-        let map_if = map(parse_if, |f| DirectiveToken::If {
-            cond: span_string(&f),
+        let parse_if = preceded(match_dir_name(DIRECTIVE_IF), condition_eol_or_comment).map(|f| {
+            DirectiveToken::If {
+                cond: span_string(&f),
+            }
         });
 
-        let map_else = value(DirectiveToken::Else, tag_no_case(DIRECTIVE_ELSE));
+        let parse_else = value(DirectiveToken::Else, tag_no_case(DIRECTIVE_ELSE));
 
-        let map_elseif = map(
+        let parse_elseif = map(
             preceded(
                 preceded(tag_no_case(DIRECTIVE_ELSEIF), sp1),
                 condition_eol_or_comment,
@@ -263,18 +269,18 @@ impl<'a> TokenParser {
             },
         );
 
-        let map_endif = value(DirectiveToken::EndIf, tag_no_case(DIRECTIVE_ENDIF));
+        let parse_endif = value(DirectiveToken::EndIf, tag_no_case(DIRECTIVE_ENDIF));
 
         let alt_directives = alt((
-            map_define,
-            map_include,
-            map_macro,
-            map_end_macro,
-            map_option,
-            map_if,
-            map_else,
-            map_elseif,
-            map_endif,
+            parse_define,
+            parse_include,
+            parse_macro,
+            parse_end_macro,
+            parse_option,
+            parse_if,
+            parse_else,
+            parse_elseif,
+            parse_endif,
         ));
 
         preceded(

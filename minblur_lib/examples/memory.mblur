@@ -21,7 +21,7 @@ main_loop:
   mem_wait!(0, instr)
   mem_wait!(6, a_val)
   mem_wait!(12, b_val)
-  jump $label:decode_instr always -1 -1
+  jump decode_instr always -1 -1
 
 decode_instr:
   # References:
@@ -36,7 +36,6 @@ decode_instr:
     jump(instr_c2, ic == 2)
     jump(instr_bad)
   }
-  
   
 instr_c0:
   # TODO

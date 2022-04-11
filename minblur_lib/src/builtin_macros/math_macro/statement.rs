@@ -653,12 +653,13 @@ impl<'a> ExpressionTokenGen<'a> {
         let dest_value = dest
             .as_value()
             .map(|v| {
-                if let Some(name) = v.as_string() {
-                    let sc = &self.string_cache;
-                    InstValue::QuickConstExpr(sc.get(FUNC_LABEL_DEST), sc.get(name))
-                } else {
-                    InstValue::new_num(v.as_f64().unwrap_or_default())
-                }
+                InstValue::Value(v.clone())
+                // if let Some(name) = v.as_string() {
+                //     let sc = &self.string_cache;
+                //     InstValue::QuickConstExpr(sc.get(FUNC_LABEL_DEST), sc.get(name))
+                // } else {
+                //     InstValue::new_num(v.as_f64().unwrap_or_default())
+                // }
             })
             .ok_or_else(|| EvalError::invalid_arg(name, 0))?;
 

@@ -1,0 +1,33 @@
+---
+source: minblur_lib/src/compiler/mod.rs
+assertion_line: 367
+expression: compile_code(code)
+
+---
+start.0:
+sensor shoot lancer1 @shooting
+sensor aimX lancer1 @shootX
+sensor aimY lancer1 @shootY
+set i 0
+fire_loop.1:
+getlink bldg i
+op add i i 1
+jump fire_end.2 equal bldg lancer1
+control shoot bldg bldgAimX bldgAimY shoot 0
+fire_end.2:
+jump fire_loop.1 lessThan i @links
+jump start.0 always 1 1
+start.3:
+sensor shoot salvo2 @shooting
+sensor aimX salvo2 @shootX
+sensor aimY salvo2 @shootY
+set i 0
+fire_loop.4:
+getlink bldg i
+op add i i 1
+jump fire_end.5 equal bldg salvo2
+control shoot bldg bldgAimX bldgAimY shoot 0
+fire_end.5:
+jump fire_loop.4 lessThan i @links
+jump start.3 always 1 1
+

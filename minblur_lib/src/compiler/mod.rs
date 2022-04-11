@@ -135,17 +135,14 @@ mod test {
     fn math_labels() {
         let code = r#"m! {
         ore = sorter1
-        i = 0
+        i = 1
         loop:
         obj = getlink(i)
         i += 1
-        type = sensor(obj, @type)
-        jump(loop.end, type != @unloader)
         control(configure, obj, ore, 0, 0, 0)
-        loop.end:
         jump(loop, i < @links)
         }"#;
-        assert_eq!(compile_code(code), "set ore sorter1\nset i 0\ngetlink obj i\nop add i i 1\nsensor type obj @type\njump 7 notEqual type @unloader\ncontrol configure obj ore 0 0 0\njump 2 lessThan i @links\n");
+        assert_eq!(compile_code(code), "set ore sorter1\nset i 1\nloop:\ngetlink obj i\nop add i i 1\ncontrol configure obj ore 0 0 0\njump loop lessThan i @links\n");
     }
 
     /// Test for a basic label syntax error
@@ -167,18 +164,18 @@ mod test {
     fn test_local_labels() {
         let code = r#"
         .macro to_max(max)
-          .option label_mode "local"
-          label1:
-            op add r1 r1 1
-            jump $label:label1 lessThan r1 $max
+          .option label_mode local
+          lb1:
+          m! r1 += 1
+          jump $label:lb1 lessThan r1 $max
         .endmacro
 
-        label1:
+        lb1:
           set r1 0
           to_max!(5)
           to_max!(10)
         "#;
-        assert_eq!(compile_code(code), "set r1 0\nop add r1 r1 1\njump 1 lessThan r1 5\nop add r1 r1 1\njump 3 lessThan r1 10\n");
+        assert_eq!(compile_code(code), "lb1:\nset r1 0\nlb1.1:\nop add r1 r1 1\njump 1 lessThan r1 5\nlb1.2:\nop add r1 r1 1\njump 3 lessThan r1 10\n");
     }
 
     #[test]
@@ -310,7 +307,7 @@ mod test {
         @b.d:
         end
         "#;
-        assert_eq!(compile_code(code), "set @a.b 5\nend\n");
+        assert_eq!(compile_code(code), "set @a.b 5\n@b.d:\nend\n");
     }
 
     #[test]
@@ -333,16 +330,14 @@ mod test {
         # Unconditional jump
         m! jump(start)
         "#;
-        assert_eq!(
-            compile_code(code),
-            "sensor bx lancer1 @x\nsensor by lancer1 @y\nop sub dx bx @x\nop sub __t0 by @y\nop len dist dx __t0\nprint len\njump 8 greaterThan len 20\nprint \" - far away\"\nprintflush message1\njump 2 always 1 1\n"
-        );
+        insta::assert_display_snapshot!(compile_code(code));
     }
 
     #[test]
     fn readme_macro_example() {
         let code = r#"
         .macro shoot_control(controller)
+        .option label_mode local
         start:
         sensor shoot $controller @shooting
         sensor aimX $controller @shootX
@@ -352,7 +347,7 @@ mod test {
         getlink bldg i
         m! i += 1
         # Don't try to control the controller
-        jump $label:fire_end equal bldg $controller
+        jump fire_end equal bldg $controller
         control shoot bldg bldgAimX bldgAimY shoot 0
         fire_end:
         m! jump(fire_loop, i < @links)
@@ -363,10 +358,7 @@ mod test {
         # Here salvo2 is the controller
         shoot_control!(salvo2)
         "#;
-        assert_eq!(
-            compile_code(code),
-            "sensor shoot lancer1 @shooting\nsensor aimX lancer1 @shootX\nsensor aimY lancer1 @shootY\nset i 0\ngetlink bldg i\nop add i i 1\njump 8 equal bldg lancer1\ncontrol shoot bldg bldgAimX bldgAimY shoot 0\njump 4 lessThan i @links\njump 0 always 1 1\nsensor shoot salvo2 @shooting\nsensor aimX salvo2 @shootX\nsensor aimY salvo2 @shootY\nset i 0\ngetlink bldg i\nop add i i 1\njump 18 equal bldg salvo2\ncontrol shoot bldg bldgAimX bldgAimY shoot 0\njump 14 lessThan i @links\njump 10 always 1 1\n"
-        );
+        insta::assert_display_snapshot!(compile_code(code));
     }
 
     #[test]
@@ -382,7 +374,7 @@ mod test {
           m! jump(loop)"#;
         assert_eq!(
             compile_code(code),
-            "set i 1\nop add i i 1\nop mod __t0 i 1000\njump 1 greaterThan __t0 0\nprint i\nprintflush message1\njump 1 always 1 1\n"
+            "set i 1\nloop:\nop add i i 1\nop mod __t0 i 1000\njump loop greaterThan __t0 0\nprint i\nprintflush message1\njump loop always 1 1\n"
         );
     }
 

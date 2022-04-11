@@ -63,6 +63,21 @@ impl InstValue {
         }
     }
 
+    pub fn as_name(&self) -> Option<&str> {
+        match self {
+            Self::EnumName(s) => Some(s.as_str()),
+            Self::Value(AValue::Name(s)) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn as_number(&self) -> Option<f64> {
+        match self {
+            Self::Value(AValue::Num(v)) => Some(*v),
+            _ => None,
+        }
+    }
+
     pub fn into_value(self) -> Option<AValue> {
         match self {
             Self::EnumName(v) => Some(AValue::name(v.as_str())),
@@ -937,7 +952,7 @@ impl IInstruction for InstructionJump {
     fn check_output(&self) -> Result<(), PassError> {
         value_check!(self;
             check "op" self.op => {is_enum<JumpSymbol>()};
-            check "dest" self.dest => {is_number()};
+            check "dest" self.dest => {is_name()}, {is_number()};
             check "left" self.left => {is_name()}, {is_number()};
             check "right" self.right => {is_name()}, {is_number()};
         );
