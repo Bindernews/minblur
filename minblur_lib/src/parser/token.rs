@@ -1,62 +1,20 @@
-use instruction::{parse_instruction_arg_string, InstructionParser};
+use bn_expression::basic::BasicOp;
+use bn_expression::parse::{match_name_basic, nom_fail, ExpressionParser, IExpressionParser};
+
 use nom::{
     branch::alt,
-    bytes::complete::{is_not, tag, tag_no_case, take_until},
+    bytes::complete::{tag, tag_no_case, take_while, take_while1},
     character::complete::{char, one_of},
-    combinator::{cut, eof, map, peek, recognize, value},
+    combinator::{cut, map, peek, value},
     error::context,
-    multi::{many1, separated_list0},
+    multi::{many0, many1, separated_list0},
     sequence::{delimited, pair, preceded, separated_pair, terminated, tuple},
-    Finish, Needed, Parser, Slice,
+    Finish, Parser,
 };
 
-use super::{
-    common::{
-        assert_input_consumed, identifier, identifier_basic, parse_string, sp0, sp0_nl, sp1,
-        span_string, ErrType, MyResult, Span,
-    },
-    consts::*,
-    statement::*,
-};
+use super::{common::*, consts::*, statement::*};
 use crate::common::{macros::prcall, string_cache::*};
-use crate::compiler::instruction::{InstValue, Instruction};
-
-/// Match a comment to the end of the line and return ()
-fn eol_comment(input: Span) -> MyResult<Span> {
-    recognize(pair(char(COMMENT_CHAR), is_not("\n\r")))(input)
-}
-
-/// Match a block comment. Does NOT support nested comments.
-fn block_comment(input: Span) -> MyResult<Span> {
-    recognize(tuple((
-        tag(COMMENT_BEGIN),
-        take_until(COMMENT_END),
-        tag(COMMENT_END),
-    )))(input)
-}
-
-/// Match a pair of balanced `open` and `close` characters, returns the entire contents as a string.
-///
-fn balanced_braces<'a>(open: char, close: char) -> impl FnMut(Span<'a>) -> MyResult<Span<'a>> {
-    let balanced = move |input: Span<'a>| -> MyResult<Span<'a>> {
-        let mut depth = 1;
-        for (i, c) in input.chars().enumerate() {
-            if c == open {
-                depth += 1;
-            }
-            if c == close {
-                depth -= 1;
-            }
-            if depth == 0 {
-                let remain = input.slice(i..);
-                let result = input.slice(0..i);
-                return Ok((remain, result));
-            }
-        }
-        Err(nom::Err::<ErrType>::Incomplete(Needed::Unknown))
-    };
-    delimited(char(open), balanced, char(close))
-}
+use crate::compiler::instruction::{InstValue, Instruction, InstructionKind};
 
 /// Match pair of common balanced braces, returning the contents
 ///
@@ -77,23 +35,10 @@ fn argument_list(input: Span) -> MyResult<Vec<Span>> {
     )(input)
 }
 
-/// Parse a condition statement that lasts until the end of the line
-fn condition_eol_or_comment(input: Span) -> MyResult<Span> {
-    is_not("\r\n#")(input)
-}
-
-/// Parse until the end of the line, or a line comment
+/// Returns the span up until a statement terminator
 /// TODO: allow backslash to escape EOL
-fn until_eol_or_comment(input: Span) -> MyResult<Span> {
-    is_not("\r\n#")(input)
-}
-
-/// Parse until either a comment, semicolon, or newline
-fn until_end_of_statement(input: Span) -> MyResult<Span> {
-    terminated(
-        sp0,
-        peek(alt((value((), one_of(";#\r\n")), value((), eof)))),
-    )(input)
+fn find_end_of_statement(input: Span) -> MyResult<Span> {
+    take_while(|c: char| !";#\r\n".contains(c)).parse(input)
 }
 
 #[derive(Clone, Debug, PartialEq, Hash)]
@@ -138,27 +83,34 @@ pub enum DirectiveToken {
     EndIf,
 }
 
+#[derive(Debug, Clone)]
+pub struct ParseContext {
+    pub string_cache: StringCache,
+}
+impl ParseContext {
+    pub fn new(cache: StringCache) -> Self {
+        Self {
+            string_cache: cache,
+        }
+    }
+}
+
 pub struct TokenParser {
     pub string_cache: StringCache,
-    instr_parser: InstructionParser,
+    ctx: ParseContext,
 }
 impl TokenParser {
     pub fn new(string_cache: &StringCache) -> Self {
         Self {
             string_cache: string_cache.clone(),
-            instr_parser: InstructionParser::new(string_cache),
+            ctx: ParseContext::new(string_cache.clone()),
         }
     }
 }
 impl<'a> TokenParser {
     fn parse_token_instruction(&self, input: Span<'a>) -> MyResult<'a, TokenData> {
-        map(
-            terminated(
-                context("instruction", prcall!(self.instr_parser.parse_instruction)),
-                until_end_of_statement,
-            ),
-            TokenData::Instruction,
-        )(input)
+        let parse_instr = |inp| parse_instruction(&self.ctx, inp);
+        map(parse_instr, TokenData::Instruction)(input)
     }
 
     fn parse_token_macro_call(&self, input: Span<'a>) -> MyResult<'a, TokenData> {
@@ -167,23 +119,22 @@ impl<'a> TokenParser {
             s
         }
 
-        map(
-            pair(
-                terminated(identifier_basic, char('!')),
-                alt((
-                    preceded(sp0, balanced_braces_common),
-                    preceded(sp1, until_eol_or_comment),
-                )),
-            ),
-            |f| TokenData::MacroCall {
-                name: self.string_cache.get(*f.0),
-                content: trim_right_mut(span_string(&f.1)),
-            },
-        )(input)
+        pair(
+            terminated(identifier_mlog, char('!')),
+            alt((
+                preceded(sp0, balanced_braces_common),
+                preceded(sp1, find_end_of_statement),
+            )),
+        )
+        .map(|f| TokenData::MacroCall {
+            name: self.string_cache.get(*f.0),
+            content: trim_right_mut(span_string(&f.1)),
+        })
+        .parse(input)
     }
 
     fn parse_token_label(input: Span) -> MyResult<TokenData> {
-        map(terminated(identifier_basic, char(':')), |f| {
+        map(terminated(identifier_mlog, char(':')), |f| {
             TokenData::Label(Label::new(*f))
         })
         .parse(input)
@@ -200,20 +151,20 @@ impl<'a> TokenParser {
     }
 
     fn parse_token_end_of_statement(input: Span) -> MyResult<TokenData> {
-        map(one_of(";\r\n"), |_| TokenData::EndOfStatement)(input)
+        map(one_of(";#\r\n"), |_| TokenData::EndOfStatement)(input)
     }
 
     /// Parse a directive. Directives begin with "." and
-    pub fn parse_directive_token(&self, input: Span<'a>) -> MyResult<'a, TokenData> {
+    pub fn parse_token_directive(&self, input: Span<'a>) -> MyResult<'a, TokenData> {
         fn match_dir_name<'b>(name: &'static str) -> impl Parser<Span<'b>, (), ErrType<'b>> {
             value((), pair(tag_no_case(name), sp0))
         }
 
         let parse_define = tuple((
             match_dir_name(DIRECTIVE_DEFINE),
-            identifier_basic,
+            identifier_mlog,
             value((), sp1),
-            |inp| parse_instruction_arg_string(&self.string_cache, inp),
+            |inp| parse_instruction_arg_string(&self.ctx, inp),
         ))
         .map(|opt: ((), Span, (), InstValue)| DirectiveToken::Define {
             key: span_string(&opt.1),
@@ -230,7 +181,7 @@ impl<'a> TokenParser {
         let parse_macro = map(
             tuple((
                 match_dir_name(DIRECTIVE_MACRO),
-                identifier_basic,
+                identifier_mlog,
                 sp0,
                 argument_list,
             )),
@@ -244,14 +195,14 @@ impl<'a> TokenParser {
 
         let parse_option = preceded(
             match_dir_name(DIRECTIVE_OPTION),
-            separated_pair(identifier_basic, sp1, alt((parse_string, identifier_basic))),
+            separated_pair(identifier_mlog, sp1, alt((parse_string, identifier_mlog))),
         )
         .map(|opt| DirectiveToken::Option {
             key: span_string(&opt.0),
             value: span_string(&opt.1),
         });
 
-        let parse_if = preceded(match_dir_name(DIRECTIVE_IF), condition_eol_or_comment).map(|f| {
+        let parse_if = preceded(match_dir_name(DIRECTIVE_IF), find_end_of_statement).map(|f| {
             DirectiveToken::If {
                 cond: span_string(&f),
             }
@@ -260,10 +211,7 @@ impl<'a> TokenParser {
         let parse_else = value(DirectiveToken::Else, tag_no_case(DIRECTIVE_ELSE));
 
         let parse_elseif = map(
-            preceded(
-                preceded(tag_no_case(DIRECTIVE_ELSEIF), sp1),
-                condition_eol_or_comment,
-            ),
+            preceded(match_dir_name(DIRECTIVE_ELSEIF), find_end_of_statement),
             |cond| DirectiveToken::ElseIf {
                 cond: span_string(&cond),
             },
@@ -293,10 +241,11 @@ impl<'a> TokenParser {
 
     /// Parse a single line (or multi-line block in some cases)
     pub fn parse_next_token(&self, input: Span<'a>) -> MyResult<'a, Token> {
+        println!("parse_next_token: {:?}", *input);
         context(
             "expected label, instruction, or directive",
             alt((
-                prcall!(self.parse_directive_token),
+                prcall!(self.parse_token_directive),
                 Self::parse_token_label,
                 prcall!(self.parse_token_macro_call),
                 prcall!(self.parse_token_instruction),
@@ -323,238 +272,116 @@ impl<'a> TokenParser {
     }
 }
 
-pub mod instruction {
-    use bn_expression::basic::BasicOp;
-    use bn_expression::parse::{match_name_basic, ExpressionParser, IExpressionParser};
-    use nom::{
-        branch::alt,
-        bytes::complete::{tag, take_while1},
-        character::complete::char,
-        combinator::{cut, map},
-        error::{context, make_error, ErrorKind as NomErrorKind},
-        sequence::{delimited, preceded, separated_pair},
-        InputTakeAtPosition, Parser,
-    };
+pub fn parse_instr_kind<'b>(
+    ctx: &ParseContext,
+    kind: InstructionKind,
+) -> impl FnMut(Span<'b>) -> MyResult<'b, Instruction> + '_ {
+    let next_arg =
+        move |input: Span<'b>| preceded(sp1, |inp| parse_instruction_arg_string(ctx, inp))(input);
 
-    use crate::common::macros::prcall;
-    use crate::common::string_cache::StringCache;
-    use crate::common::tuple_helper::TupleToArray;
-    use crate::compiler::instruction::*;
-    use crate::parser::common::{
-        identifier_basic, parse_value, parse_value_no_string, sp1, ErrType, MyResult, Span,
-    };
+    move |input: Span<'b>| {
+        let input0 = input;
+        let (input, _) = tag(kind.name()).parse(input)?;
+        let (input, args) = cut(many0(next_arg)).parse(input)?;
+        let instr = kind.create_with_args(args).map_err(|_| {
+            // TODO better nom error type that allows dynamic context
+            nom::Err::Failure(nom_fail(
+                input0,
+                "instruction has incorrect number of arguments",
+            ))
+        })?;
+        Ok((input, instr))
+    }
+}
 
-    // Since the macro is local-only we don't have to worry about full-use-paths.
-    macro_rules! fn_parse_instr {
-        (
-            $self:ident;
-            $fn_name:ident,
-            $map_type:ty,
-            $name:literal,
-            ( $($arg:ident),+ $(,)? )
-        ) => {
-            pub fn $fn_name (&$self, input: Span<'a>) -> MyResult<'a, $map_type> {
-                preceded(
-                    tag($name),
-                    map(
-                        nom::sequence::tuple(( $(prcall!($self.$arg), )+ )),
-                        |v| <$map_type>::from(v.to_array()),
-                    )
-                )(input)
-            }
-        };
-    }
-
-    #[derive(Debug, Clone, PartialEq)]
-    pub struct InstructionParser {
-        string_cache: StringCache,
-    }
-    impl InstructionParser {
-        pub fn new(cache: &StringCache) -> Self {
-            Self {
-                string_cache: cache.clone(),
-            }
-        }
-    }
-    impl<'a> Parser<Span<'a>, Instruction, ErrType<'a>> for InstructionParser {
-        fn parse(&mut self, input: Span<'a>) -> MyResult<'a, Instruction> {
-            self.parse_instruction(input)
-        }
-    }
-    impl<'a> InstructionParser {
-        fn_parse_instr!(self; parse_i_read, InstructionRead, "read", 
-            ( next_arg, next_arg, next_arg ) );
-        fn_parse_instr!(self; parse_i_write, InstructionWrite, "write",
-            ( next_arg, next_arg, next_arg ) );
-        fn_parse_instr!(self; parse_i_draw, InstructionDraw, "draw",
-            ( parse_enum_arg, next_arg, next_arg, next_arg, next_arg, next_arg, next_arg )
-        );
-        fn_parse_instr!(self; parse_i_print, InstructionPrint, "print",
-            ( next_arg_string ) );
-        fn_parse_instr!(self; parse_i_draw_flush, InstructionDrawFlush, "drawflush",
-            ( next_arg ) );
-        fn_parse_instr!(self; parse_i_print_flush, InstructionPrintFlush, "printflush",
-            ( next_arg ) );
-        fn_parse_instr!(self; parse_i_get_link, InstructionGetLink, "getlink",
-            ( next_arg, next_arg ) );
-        fn_parse_instr!(self; parse_i_control, InstructionControl, "control",
-            ( parse_enum_arg, next_arg, next_arg, next_arg, next_arg, next_arg ) );
-        fn_parse_instr!(self; parse_i_radar, InstructionRadar, "radar",
-            (
-                parse_enum_arg, parse_enum_arg, parse_enum_arg,
-                parse_enum_arg, next_arg, next_arg, next_arg,
-            )
-        );
-        fn_parse_instr!(self; parse_i_sensor, InstructionSensor, "sensor",
-            ( next_arg, next_arg, next_arg ) );
-        fn_parse_instr!(self; parse_i_set, InstructionSet, "set",
-            ( next_arg, next_arg ) );
-        fn_parse_instr!(self; parse_i_op, InstructionOp, "op",
-            ( parse_enum_arg, next_arg, next_arg, next_arg ) );
-        pub fn parse_i_end(&self, input: Span<'a>) -> MyResult<'a, InstructionEnd> {
-            map(tag("end"), |_| InstructionEnd {})(input)
-        }
-        fn_parse_instr!(self; parse_i_jump, InstructionJump, "jump",
-            ( next_arg, parse_enum_arg, next_arg, next_arg ) );
-        fn_parse_instr!(self; parse_i_unit_bind, InstructionUnitBind, "ubind",
-            ( next_arg ) );
-        fn_parse_instr!(self; parse_i_unit_control, InstructionUnitControl, "ucontrol",
-            ( parse_enum_arg, next_arg, next_arg, next_arg, next_arg, next_arg ) );
-        fn_parse_instr!(self; parse_i_unit_radar, InstructionUnitRadar, "uradar",
-            (
-                parse_enum_arg, parse_enum_arg, parse_enum_arg,
-                parse_enum_arg, next_arg, next_arg, next_arg,
-            )
-        );
-        fn_parse_instr!(self; parse_i_unit_locate, InstructionUnitLocate, "ulocate",
-            (
-                parse_enum_arg, parse_enum_arg,
-                next_arg, next_arg, next_arg, next_arg, next_arg, next_arg,
-            )
-        );
-
-        pub fn parse_instruction(&self, input: Span<'a>) -> MyResult<'a, Instruction> {
+pub fn parse_instruction<'b>(ctx: &ParseContext, input: Span<'b>) -> MyResult<'b, Instruction> {
+    macro_rules! build_alt {
+        ( [$($k:ident),*] ) => {
             alt((
-                map(prcall!(self.parse_i_read), Into::into),
-                map(prcall!(self.parse_i_write), Into::into),
-                // These are before print and draw to make sure the longer names are properly detected
-                map(prcall!(self.parse_i_draw_flush), Into::into),
-                map(prcall!(self.parse_i_print_flush), Into::into),
-                map(prcall!(self.parse_i_print), Into::into),
-                map(prcall!(self.parse_i_draw), Into::into),
-                map(prcall!(self.parse_i_get_link), Into::into),
-                map(prcall!(self.parse_i_control), Into::into),
-                map(prcall!(self.parse_i_radar), Into::into),
-                map(prcall!(self.parse_i_sensor), Into::into),
-                map(prcall!(self.parse_i_set), Into::into),
-                map(prcall!(self.parse_i_op), Into::into),
-                map(prcall!(self.parse_i_end), Into::into),
-                map(prcall!(self.parse_i_jump), Into::into),
-                map(prcall!(self.parse_i_unit_bind), Into::into),
-                map(prcall!(self.parse_i_unit_control), Into::into),
-                map(prcall!(self.parse_i_unit_radar), Into::into),
-                map(prcall!(self.parse_i_unit_locate), Into::into),
+                $( parse_instr_kind(ctx, InstructionKind::$k), )*
             ))(input)
-        }
-
-        /// Wrap an enum to parse either a constant or name
-        pub fn parse_enum_arg(&self, input: Span<'a>) -> MyResult<'a, InstValue> {
-            preceded(
-                sp1,
-                alt((
-                    |inp| parse_instruction_value_const(&self.string_cache, inp),
-                    map(match_name, |s| {
-                        InstValue::EnumName(self.string_cache.get(*s))
-                    }),
-                )),
-            )(input)
-        }
-
-        fn next_arg(&self, input: Span<'a>) -> MyResult<'a, InstValue> {
-            preceded(
-                sp1,
-                alt((
-                    |inp| parse_instruction_value_const(&self.string_cache, inp),
-                    map(parse_value_no_string, InstValue::Value),
-                )),
-            )(input)
-        }
-
-        fn next_arg_string(&self, input: Span<'a>) -> MyResult<'a, InstValue> {
-            preceded(
-                sp1,
-                alt((
-                    |inp| parse_instruction_value_const(&self.string_cache, inp),
-                    map(parse_value, InstValue::Value),
-                )),
-            )(input)
-        }
-    }
-
-    //
-    // Helper functions
-    //
-
-    /// Match an instruction name
-    pub fn match_name(input: Span) -> MyResult<Span> {
-        input.split_at_position1_complete(
-            |c| !(c.is_alphanumeric() || c == '_'),
-            NomErrorKind::AlphaNumeric,
-        )
-    }
-
-    pub fn parse_instruction_value_const<'a>(
-        string_cache: &'_ StringCache,
-        input: Span<'a>,
-    ) -> MyResult<'a, InstValue> {
-        let parse_const_expression = |input| -> MyResult<'a, InstValue> {
-            let take_cond = |c: char| (c != '}' && c != '\r' && c != '\n');
-            delimited(char('{'), take_while1(take_cond), cut(char('}')))
-                .and_then(|input| {
-                    // TODO: better error conversion, maybe custom error type?
-                    let expr = new_expr_parser()
-                        .parse_expression(input)
-                        .map_err(nom::Err::Failure)?;
-                    Ok(("".into(), InstValue::new_expr(expr)))
-                })
-                .parse(input)
         };
+    }
+    // PrintFlush and DrawFlush come before Print and Draw so that the longer names
+    // are tested first, otherwise `draw` would error while trying to parse `drawflush`.
+    build_alt!([
+        DrawFlush,
+        PrintFlush,
+        Read,
+        Write,
+        Draw,
+        Print,
+        GetLink,
+        Control,
+        Radar,
+        Sensor,
+        Set,
+        Op,
+        End,
+        Jump,
+        UnitBind,
+        UnitControl,
+        UnitRadar,
+        UnitLocate
+    ])
+}
 
-        let parse_quick_const = map(
-            separated_pair(match_name, tag(":"), identifier_basic),
-            |(key, value)| InstValue::QuickConstExpr(string_cache.get(*key), (*value).into()),
-        );
-
-        preceded(
-            char('$'),
-            alt((
-                // Const in ${}
-                context("const expression", parse_const_expression),
-                // "quick const-expr" <quick-name> ":" <quick-value>
-                context("quick-const expression", parse_quick_const),
-                // Simple const name
-                map(identifier_basic, |v| InstValue::Const((*v).into())),
-                // Error b/c we have a $ but we failed to parse a const or constexpr
-                |inp| Err(nom::Err::Error(make_error(inp, NomErrorKind::Fail))),
-            )),
-        )
+fn parse_const_expression<'a>(_ctx: &ParseContext, input: Span<'a>) -> MyResult<'a, InstValue> {
+    let take_cond = |c: char| (c != '}' && c != '\r' && c != '\n');
+    delimited(char('{'), take_while1(take_cond), cut(char('}')))
+        .and_then(|input| {
+            // TODO: better error conversion, maybe custom error type?
+            let expr = new_expr_parser()
+                .parse_expression(input)
+                .map_err(nom::Err::Failure)?;
+            Ok(("".into(), InstValue::new_expr(expr)))
+        })
         .parse(input)
-    }
+}
 
-    fn new_expr_parser() -> impl IExpressionParser<BasicOp> {
-        ExpressionParser::<BasicOp, _, _>::new(match_name_basic, match_name_basic)
-    }
+pub fn parse_instruction_value_const<'a>(
+    ctx: &ParseContext,
+    input: Span<'a>,
+) -> MyResult<'a, InstValue> {
+    let parse_const_expr = |inp| parse_const_expression(ctx, inp);
 
-    pub fn parse_instruction_arg_string<'a>(
-        string_cache: &'_ StringCache,
-        input: Span<'a>,
-    ) -> MyResult<'a, InstValue> {
-        alt((
-            |inp| parse_instruction_value_const(string_cache, inp),
-            map(parse_value, InstValue::Value),
-        ))
-        .parse(input)
-    }
+    let parse_quick_const = map(
+        separated_pair(ascii_identifier, tag(":"), identifier_mlog),
+        |(key, value)| InstValue::QuickConstExpr(ctx.string_cache.get(*key), (*value).into()),
+    );
+
+    let parse_basic = identifier_mlog.map(|v| InstValue::Const(ctx.string_cache.get(*v)));
+
+    preceded(
+        char('$'),
+        cut(alt((
+            // Const in ${}
+            context("const expression", parse_const_expr),
+            // "quick const-expr" <quick-name> ":" <quick-value>
+            context("quick-const expression", parse_quick_const),
+            // Simple const name
+            context("const name", parse_basic),
+        ))),
+    )
+    .parse(input)
+}
+
+fn new_expr_parser() -> impl IExpressionParser<BasicOp> {
+    ExpressionParser::<BasicOp, _, _>::new(match_name_basic, match_name_basic)
+}
+
+pub fn parse_instruction_arg_string<'a>(
+    ctx: &ParseContext,
+    input: Span<'a>,
+) -> MyResult<'a, InstValue> {
+    alt((
+        |inp| parse_instruction_value_const(ctx, inp),
+        map(ascii_identifier, |s| {
+            InstValue::EnumName(ctx.string_cache.get(*s))
+        }),
+        map(parse_value, InstValue::Value),
+    ))
+    .parse(input)
 }
 
 #[cfg(test)]

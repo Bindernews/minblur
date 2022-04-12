@@ -20,8 +20,8 @@ use crate::{
     builtin_macros::{self, UserMacro},
     common::string_cache::StringCache,
     parser::{
-        parse_instruction_arg_string, Directive, DirectiveIf, DirectiveOption, Label, Source,
-        Statement, StatementData, TokenParser,
+        Directive, DirectiveIf, DirectiveOption, Label, Source, Statement, StatementData,
+        TokenParser,
     },
 };
 
@@ -207,10 +207,10 @@ impl CompilerEnv {
     pub fn parse_value(&self, input: &str) -> Result<InstValue, PassError> {
         use nom::{Finish, Parser};
 
-        use crate::parser::common::*;
-        let string_cache = &self.c.get_ref().string_cache;
+        use crate::parser::{common::*, parse_instruction_arg_string, ParseContext};
+        let ctx = ParseContext::new(self.c.get_ref().string_cache.clone());
         let mut parser = move |input| -> MyResult<InstValue> {
-            let parse_arg = |inp| parse_instruction_arg_string(string_cache, inp);
+            let parse_arg = |inp| parse_instruction_arg_string(&ctx, inp);
             let (input, value) = parse_arg(input)?;
             let (input, _) = assert_input_consumed(parse_arg).parse(input)?;
             Ok((input, value))
@@ -916,13 +916,13 @@ impl<'a> ExpansionPass<'a> {
 
         // Special handling to patch jump labels
         if let Instruction::Jump(i_jump) = &mut instr {
-            (i_jump.dest.as_name())
+            let new_dest = (i_jump.dest.as_name())
                 .map(|name| self.env.declare_label(EnvMode::Pass, name))
                 .transpose()
-                .map_err(|e| e.with_source(&source))?
-                .map(|name| {
-                    i_jump.dest = InstValue::new_name(name);
-                });
+                .map_err(|e| e.with_source(&source))?;
+            if let Some(new_dest) = new_dest {
+                i_jump.dest = InstValue::new_name(new_dest);
+            }
         }
 
         self.new_tokens.push(Statement {
@@ -1125,17 +1125,17 @@ impl<'a> ConstAndLabelPass<'a> {
         // If it's a jump instruction, assert that the destination is a number or named label
         // and if it's a label, strip the suffix.
         if let Instruction::Jump(jump_i) = &mut instr {
-            (jump_i.dest.as_name())
+            let new_dest = (jump_i.dest.as_name())
                 .map(|name| {
                     self.env
                         .get_label_dest(name)
                         .ok_or_else(|| PassError::unknown_label(name).with_source(&source))
                         .map(|_| InstValue::new_name(Label::strip_suffix(name)))
                 })
-                .transpose()?
-                .map(|name| {
-                    jump_i.dest = name;
-                });
+                .transpose()?;
+            if let Some(new_dest) = new_dest {
+                jump_i.dest = new_dest;
+            }
         }
         // Append modified instruction
         self.new_tokens

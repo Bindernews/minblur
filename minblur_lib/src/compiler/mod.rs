@@ -161,6 +161,21 @@ mod test {
     }
 
     #[test]
+    fn wrong_arg_count() {
+        let code = " set a 1 2";
+        assert_eq!(compile_error_display(code), "Error in test\n| syntax error at 1:2 near 's' => expected label, instruction, or directive\n|   at 1:2 near 's' => instruction has incorrect number of arguments\n");
+    }
+
+    #[test]
+    fn wrong_math_arg_count() {
+        let code = "m! control(1, 2)";
+        assert_eq!(
+            compile_error_display(code),
+            "Error in test at 1:1\n| function 'control' failed => \"expected 6 args, got 2\"\n\n"
+        );
+    }
+
+    #[test]
     fn test_local_labels() {
         let code = r#"
         .macro to_max(max)

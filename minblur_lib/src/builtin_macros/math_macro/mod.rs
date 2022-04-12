@@ -78,8 +78,8 @@ mod parse {
     use super::statement::{AssignmentOp, Expression, MathOp};
     use super::*;
     use crate::parser::common::{
-        identifier_basic, match_identifier_basic_const, parse_identifier_basic_const,
-        statement_end, MyResult, Span,
+        identifier_mlog, match_identifier_basic_const, parse_identifier_basic_const, statement_end,
+        MyResult, Span,
     };
 
     pub struct Parser {}
@@ -119,7 +119,7 @@ mod parse {
             terminated(parse_identifier_basic_const, pair(space0, tag(":")))
                 .map(|name| LabelStatement {
                     pos: Position::from_span(&input),
-                    name: name.to_string(),
+                    name,
                 })
                 .parse(input)
         }
@@ -183,7 +183,7 @@ mod parse {
     }
 
     fn expr_parser() -> impl IExpressionParser<MathOp> {
-        ExpressionParser::new(match_identifier_basic_const, identifier_basic)
+        ExpressionParser::new(match_identifier_basic_const, identifier_mlog)
     }
 }
 

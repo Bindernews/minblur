@@ -209,6 +209,7 @@ impl MathFunction {
             Self::Op(v) => v.name(),
         }
     }
+
     pub fn from_name(input: &str) -> Option<Self> {
         // diallow op and set instructions
         match input {
@@ -219,10 +220,8 @@ impl MathFunction {
         }
         if let Some(op) = OpFunction::from_name(input) {
             Some(Self::Op(op))
-        } else if let Some(instr) = InstructionKind::from_name(input) {
-            Some(Self::Instruction(instr))
         } else {
-            None
+            InstructionKind::from_name(input).map(Self::Instruction)
         }
     }
 }
