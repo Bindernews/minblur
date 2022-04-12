@@ -4,7 +4,7 @@ use bn_expression::ParseError;
 
 use crate::{
     compiler::{macros::prelude::*, EnvMode},
-    parser::DirectiveDefineMacro,
+    parser::{DirectiveDefineMacro, ParseContext},
 };
 
 #[derive(Clone, Debug, PartialEq)]
@@ -28,7 +28,8 @@ impl MacroHandler for UserMacro {
         _name: &str,
         content: &str,
     ) -> MacroResult {
-        let arg_values = parse::parse_args(&ctx.string_cache(), content)
+        let parse_ctx = ParseContext::new(ctx.string_cache().clone());
+        let arg_values = parse::parse_args(&parse_ctx, content)
             .map_err(|e| CompileError::macro_error(source.clone(), e))?;
         let arg_names = &self.macro_define.args;
         if arg_values.len() != arg_names.len() {
@@ -81,18 +82,17 @@ mod parse {
 
     use super::UserMacroError;
     use crate::{
-        common::string_cache::StringCache,
         compiler::instruction::InstValue,
         parser::{
             common::{assert_input_consumed, sp0, Span},
-            parse_instruction_arg_string,
+            parse_instruction_arg_string, ParseContext,
         },
     };
 
-    pub fn parse_args(scache: &StringCache, input: &str) -> Result<Vec<InstValue>, UserMacroError> {
-        let next_arg = |input2| {
+    pub fn parse_args(ctx: &ParseContext, input: &str) -> Result<Vec<InstValue>, UserMacroError> {
+        let next_arg = move |input2| {
             let (input2, _) = sp0.parse(input2)?;
-            let (input2, value) = parse_instruction_arg_string(scache, input2)?;
+            let (input2, value) = parse_instruction_arg_string(ctx, input2)?;
             Ok((input2, value))
         };
 

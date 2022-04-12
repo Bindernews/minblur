@@ -98,17 +98,17 @@ mod parse {
         common::{macros::prcall, string_cache::StringCache},
         parser::{
             common::{assert_input_consumed, MyResult, Span},
-            parse_instruction_value_const,
+            parse_instruction_value_const, ParseContext,
         },
     };
 
     pub struct Parser {
-        string_cache: StringCache,
+        ctx: ParseContext,
     }
     impl<'a> Parser {
         pub fn new(string_cache: &StringCache) -> Self {
             Self {
-                string_cache: string_cache.clone(),
+                ctx: ParseContext::new(string_cache.clone()),
             }
         }
 
@@ -117,7 +117,7 @@ mod parse {
         }
 
         pub fn next_value_piece(&self, input: Span<'a>) -> MyResult<'a, PieceData<'a>> {
-            let (input, value) = parse_instruction_value_const(&self.string_cache, input)?;
+            let (input, value) = parse_instruction_value_const(&self.ctx, input)?;
             Ok((input, PieceData::InstValue(value)))
         }
 

@@ -1,6 +1,6 @@
 ---
 source: minblur_lib/src/parser/token.rs
-assertion_line: 342
+assertion_line: 473
 expression: out
 
 ---
@@ -35,8 +35,8 @@ expression: out
         data: Instruction(
             Set(
                 InstructionSet {
-                    result: Value(
-                        Name(
+                    result: EnumName(
+                        CaString(
                             "r1",
                         ),
                     ),
@@ -70,13 +70,13 @@ expression: out
                             "add",
                         ),
                     ),
-                    result: Value(
-                        Name(
+                    result: EnumName(
+                        CaString(
                             "r2",
                         ),
                     ),
-                    left: Value(
-                        Name(
+                    left: EnumName(
+                        CaString(
                             "r1",
                         ),
                     ),
@@ -130,13 +130,13 @@ expression: out
                             "mul",
                         ),
                     ),
-                    result: Value(
-                        Name(
+                    result: EnumName(
+                        CaString(
                             "y",
                         ),
                     ),
-                    left: Value(
-                        Name(
+                    left: EnumName(
+                        CaString(
                             "r1",
                         ),
                     ),

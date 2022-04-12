@@ -1,14 +1,16 @@
+use std::ops::RangeFrom;
+
+use super::consts::*;
 use bn_expression::AValue;
 use nom::{
     branch::alt,
-    bytes::complete::{escaped, tag, take_while, take_while1},
-    character::complete::{alpha1, alphanumeric1, char, hex_digit1, oct_digit1, one_of},
-    combinator::{cut, map, recognize},
+    bytes::complete::{escaped, is_not, tag, take_until, take_while, take_while1},
+    character::complete::{char, hex_digit1, oct_digit1, one_of},
+    combinator::{cut, map, opt, recognize},
     error::context,
-    multi::many0,
     number::complete::double,
-    sequence::{delimited, pair, preceded, terminated},
-    IResult, Parser,
+    sequence::{delimited, pair, preceded, terminated, tuple},
+    AsChar, IResult, InputIter, InputTake, Parser, Slice,
 };
 
 pub type Span<'a> = nom_locate::LocatedSpan<&'a str>;
@@ -103,16 +105,27 @@ pub fn parse_string(input: Span) -> MyResult<Span> {
     )(input)
 }
 
-pub fn identifier_char(input: Span) -> MyResult<Span> {
-    alt((alphanumeric1, tag("_"), tag(".")))(input)
+/// Matches a simple ascii name that starts with a letter or _
+/// and continues with letters, numbers, and underscores.
+pub fn ascii_identifier(input: Span) -> MyResult<Span> {
+    context(
+        "match name",
+        recognize(pair(
+            take_while1(|c: char| c.is_ascii_alphabetic() || c == '_'),
+            take_while(|c: char| c.is_ascii_alphanumeric() || c == '_'),
+        )),
+    )
+    .parse(input)
 }
 
 /// Basic identifier without special characters.
-pub fn identifier_basic(input: Span) -> IResult<Span, Span, ErrType> {
-    recognize(pair(
-        alt((alpha1, tag("_"), recognize(pair(tag("@"), identifier_char)))),
-        many0(identifier_char),
-    ))(input)
+pub fn identifier_mlog(input: Span) -> IResult<Span, Span, ErrType> {
+    recognize(tuple((
+        opt(char('@')),
+        take_while1(|c: char| c.is_alphabetic() || c == '_'),
+        take_while(|c: char| c.is_alphanumeric() || c == '_' || c == '.'),
+    )))
+    .parse(input)
 }
 
 /// Recognize a constant (basic identifier prefixed with $)
@@ -122,19 +135,19 @@ pub fn identifier_const(input: Span) -> IResult<Span, (char, Span), ErrType> {
         char('$'),
         alt((
             delimited(char('{'), take_while1(take_cond), char('}')),
-            identifier_basic,
+            identifier_mlog,
         )),
     )(input)
 }
 
 pub fn match_identifier_basic_const(input: Span) -> IResult<Span, Span, ErrType> {
-    alt((recognize(identifier_const), identifier_basic))(input)
+    alt((recognize(identifier_const), identifier_mlog))(input)
 }
 
 pub fn parse_identifier_basic_const(input: Span) -> IResult<Span, String, ErrType> {
     alt((
         map(identifier_const, |(_, name)| format!("${0}", name)),
-        map(identifier_basic, |s| (*s).to_string()),
+        map(identifier_mlog, |s| (*s).to_string()),
     ))(input)
 }
 
@@ -142,21 +155,13 @@ pub fn parse_identifier_basic_const(input: Span) -> IResult<Span, String, ErrTyp
 pub fn identifier(input: Span) -> MyResult<Span> {
     recognize(alt((
         recognize(identifier_const),
-        recognize(terminated(identifier_basic, char('!'))),
-        identifier_basic,
+        recognize(terminated(identifier_mlog, char('!'))),
+        identifier_mlog,
     )))(input)
 }
 
 pub fn _match_value(input: Span) -> MyResult<Span> {
-    alt((parse_string, identifier_basic, number_any_int))(input)
-}
-
-/// Parse an identifier, number, constant, or constexpr
-pub fn parse_value_no_string(input: Span) -> MyResult<AValue> {
-    alt((
-        map(parse_identifier_basic_const, AValue::name),
-        map(number_any, AValue::Num),
-    ))(input)
+    alt((parse_string, identifier_mlog, number_any_int))(input)
 }
 
 /// Parse an expression, either a variable, goto, number, or constant identifier
@@ -166,6 +171,49 @@ pub fn parse_value(input: Span) -> MyResult<AValue> {
         map(parse_identifier_basic_const, AValue::name),
         map(number_any, AValue::Num),
     ))(input)
+}
+
+/// Match a pair of balanced `open` and `close` characters, returns the entire contents as a string.
+///
+pub fn balanced_braces<I, E>(open: char, close: char) -> impl FnMut(I) -> nom::IResult<I, I, E>
+where
+    E: nom::error::ParseError<I>,
+    I: Slice<RangeFrom<usize>> + InputIter + InputTake,
+    <I as InputIter>::Item: AsChar,
+{
+    use nom::Needed;
+
+    let balanced = move |input: I| {
+        let mut depth = 1;
+        for (i, elem) in input.iter_indices() {
+            let c = elem.as_char();
+            if c == open {
+                depth += 1;
+            }
+            if c == close {
+                depth -= 1;
+            }
+            if depth == 0 {
+                return Ok(input.take_split(i));
+            }
+        }
+        Err(nom::Err::Incomplete(Needed::Unknown))
+    };
+    move |input: I| -> nom::IResult<I, I, E> { delimited(char(open), balanced, char(close))(input) }
+}
+
+/// Match a comment to the end of the line
+pub fn eol_comment(input: Span) -> MyResult<Span> {
+    recognize(pair(char(COMMENT_CHAR), is_not("\n\r")))(input)
+}
+
+/// Match a block comment. Does NOT support nested comments.
+pub fn block_comment(input: Span) -> MyResult<Span> {
+    recognize(tuple((
+        tag(COMMENT_BEGIN),
+        take_until(COMMENT_END),
+        tag(COMMENT_END),
+    )))(input)
 }
 
 /// Returns a nom error if the input string isn't empty

@@ -90,19 +90,10 @@ impl InstValue {
         matches!(self, Self::Const(_) | Self::QuickConstExpr(_, _))
     }
 
-    /// Returns true iff this value is a name (NOT an enum name)
-    pub fn is_name(&self) -> bool {
-        matches!(self, Self::Value(AValue::Name(_)))
-    }
-
     pub fn is_concrete(&self) -> bool {
         matches!(self, Self::Value(_) | Self::EnumName(_))
     }
 
-    /// Returns true iff this value is a number
-    pub fn is_number(&self) -> bool {
-        matches!(self, Self::Value(AValue::Num(_)))
-    }
     /// Returns true iff this value is a quoted string
     pub fn is_string(&self) -> bool {
         matches!(self, Self::Value(AValue::String(_)))
@@ -335,11 +326,11 @@ macro_rules! value_check {
         )
     };
 
-    (@check $field:expr; { is_name() }) => { $field.is_name() };
+    (@check $field:expr; { is_name() }) => { $field.as_name().is_some() };
     (@error $field:expr; { is_name() }) => { "name" };
     (@check $field:expr; { is_enum<$enum_type:ty>() }) => { $field.as_enum::<$enum_type>().is_some() };
     (@error $field:expr; { is_enum<$enum_type:ty>() }) => { stringify!(enum $enum_type) };
-    (@check $field:expr; { is_number() }) => { $field.is_number() };
+    (@check $field:expr; { is_number() }) => { $field.as_number().is_some() };
     (@error $field:expr; { is_number() }) => { "number" };
     (@check $field:expr; { is_string() }) => { $field.is_string() };
     (@error $field:expr; { is_string() }) => { "string" };
@@ -1237,6 +1228,7 @@ crate::build_enum_match! {
         UnitLocate: (8, false),
     }
 }
+pub(crate) use instruction_kind_match;
 
 impl InstructionKind {
     pub fn create(&self) -> Instruction {
