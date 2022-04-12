@@ -1,0 +1,19 @@
+---
+source: minblur_lib/src/compiler/mod.rs
+assertion_line: 336
+expression: compile_code(code)
+
+---
+sensor bx lancer1 @x
+sensor by lancer1 @y
+start:
+op sub dx bx @x
+op sub __t0 by @y
+op len dist dx __t0
+print len
+jump print_out greaterThan len 20
+print " - far away"
+print_out:
+printflush message1
+jump start always 1 1
+

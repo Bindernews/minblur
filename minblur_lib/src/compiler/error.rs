@@ -198,6 +198,10 @@ pub enum PassError {
     IO(#[from] std::io::Error),
 }
 impl PassError {
+    pub fn unknown_label<S: Into<String>>(label: S) -> Self {
+        Self::UnknownLabel { name: label.into() }
+    }
+
     pub fn with_source(self, source: &Source) -> CompileError {
         CompileError::PassError(source.clone().into(), self)
     }

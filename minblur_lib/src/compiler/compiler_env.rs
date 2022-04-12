@@ -753,9 +753,17 @@ impl CompilerScope {
             // Handle existing local label
             Ok(self.label_names.get(name).unwrap().clone())
         } else if self.local_mode(mode2) {
-            // Create new local label
+            // Create new label
             let label_count = self.shared.get_ref().labels.len();
-            let new_name = KString::from(format!("{}@{}", name, label_count));
+            let new_name = if self.options.label_mode == EnvMode::Local {
+                format!(
+                    "{}.{}{}{}",
+                    name, label_count, LABEL_SUFFIX_START, label_count
+                )
+            } else {
+                format!("{}{}{}", name, LABEL_SUFFIX_START, label_count)
+            };
+            let new_name = KString::from(new_name);
             self.label_names
                 .insert(KString::from_ref(name), new_name.clone());
             self.shared
@@ -905,6 +913,18 @@ impl<'a> ExpansionPass<'a> {
 
     fn handle_instruction(&mut self, source: Source, mut instr: Instruction) -> TResult<()> {
         instr.resolve_values(|val| self.env.simplify_inst_value(val, &source, true))?;
+
+        // Special handling to patch jump labels
+        if let Instruction::Jump(i_jump) = &mut instr {
+            (i_jump.dest.as_name())
+                .map(|name| self.env.declare_label(EnvMode::Pass, name))
+                .transpose()
+                .map_err(|e| e.with_source(&source))?
+                .map(|name| {
+                    i_jump.dest = InstValue::new_name(name);
+                });
+        }
+
         self.new_tokens.push(Statement {
             source,
             data: StatementData::Instruction(instr),
@@ -1087,6 +1107,10 @@ impl<'a> ConstAndLabelPass<'a> {
                     instr_count += 1;
                 }
                 StatementData::Comment(_) => self.new_tokens.push(tok),
+                StatementData::Label(mut label) => {
+                    label.name = Label::strip_suffix(&label.name).to_string();
+                    self.new_tokens.push(Statement::new(tok.source, label));
+                }
                 _ => {}
             }
         }
@@ -1098,6 +1122,21 @@ impl<'a> ConstAndLabelPass<'a> {
         instr.resolve_values(|val| self.env.simplify_inst_value(val, &source, false))?;
         // Make sure the output is valid
         instr.check_output().map_err(|e| e.with_source(&source))?;
+        // If it's a jump instruction, assert that the destination is a number or named label
+        // and if it's a label, strip the suffix.
+        if let Instruction::Jump(jump_i) = &mut instr {
+            (jump_i.dest.as_name())
+                .map(|name| {
+                    self.env
+                        .get_label_dest(name)
+                        .ok_or_else(|| PassError::unknown_label(name).with_source(&source))
+                        .map(|_| InstValue::new_name(Label::strip_suffix(name)))
+                })
+                .transpose()?
+                .map(|name| {
+                    jump_i.dest = name;
+                });
+        }
         // Append modified instruction
         self.new_tokens
             .push(Statement::new(source, StatementData::Instruction(instr)));

@@ -8,6 +8,7 @@ use super::consts::*;
 use super::Source;
 use crate::common::macros::impl_accessors;
 use crate::common::string_cache::CaString;
+use crate::compiler::consts::LABEL_SUFFIX_START;
 use crate::compiler::instruction::{InstValue, Instruction};
 use crate::compiler::GenerateCode;
 
@@ -143,7 +144,7 @@ impl Label {
     /// Labels have auto-generated suffixes added to them.
     /// This strips the suffix.
     pub fn strip_suffix(name: &str) -> &str {
-        name.find('@')
+        name.find(LABEL_SUFFIX_START)
             .map(|idx| name[0..idx].into())
             .unwrap_or_else(|| name)
     }
